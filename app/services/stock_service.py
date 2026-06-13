@@ -121,7 +121,7 @@ def escape_like_query(query: str) -> str:
 def match_reason(stock: Stock, query: str) -> str:
     if not query:
         return "default"
-    if query in stock.ticker:
+    if query.casefold() in stock.ticker.casefold():
         return "ticker"
     if query.casefold() in stock.company_name.casefold():
         return "name"
