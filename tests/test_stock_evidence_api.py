@@ -170,6 +170,70 @@ def test_stock_candidates_use_database_limit_offset(
     assert any(" LIMIT " in statement and " OFFSET " in statement for statement in statements)
 
 
+def test_stock_candidate_aggregate_queries_skip_price_metric_join(
+    seeded_api_client: TestClient,
+    seeded_session: Session,
+) -> None:
+    engine = seeded_session.get_bind()
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement.upper())
+
+    event.listen(engine, "before_cursor_execute", capture_statement)
+    try:
+        response = seeded_api_client.get("/v1/stocks/candidates", params={"limit": 2})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_statement)
+
+    aggregate_statements = [
+        statement
+        for statement in statements
+        if "COUNT(*)" in statement or "MAX(ANON_1.AS_OF_DATE)" in statement
+    ]
+
+    assert response.status_code == 200
+    assert aggregate_statements
+    assert all("PRICE_METRICS" not in statement for statement in aggregate_statements)
+
+
+def test_stock_candidate_volume_sort_joins_price_metrics_on_paged_query(
+    seeded_api_client: TestClient,
+    seeded_session: Session,
+) -> None:
+    engine = seeded_session.get_bind()
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement.upper())
+
+    event.listen(engine, "before_cursor_execute", capture_statement)
+    try:
+        response = seeded_api_client.get(
+            "/v1/stocks/candidates",
+            params={"sort": "volume_desc", "limit": 2},
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_statement)
+
+    aggregate_statements = [
+        statement
+        for statement in statements
+        if "COUNT(*)" in statement or "MAX(ANON_1.AS_OF_DATE)" in statement
+    ]
+    price_limited_statements = [
+        statement
+        for statement in statements
+        if "PRICE_METRICS" in statement and " LIMIT " in statement
+    ]
+
+    assert response.status_code == 200
+    assert all("PRICE_METRICS" not in statement for statement in aggregate_statements)
+    assert price_limited_statements
+
+
 def test_invalid_ticker_returns_contract_error(seeded_api_client: TestClient) -> None:
     response = seeded_api_client.get("/v1/stocks/ABC/evidence")
 

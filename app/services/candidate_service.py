@@ -103,7 +103,7 @@ class CandidateService:
             .limit(limit)
             .offset(offset)
         ).all()
-        candidate_rows = [(stock, score) for stock, score, _risk_count, _volume in rows]
+        candidate_rows = [(row[0], row[1]) for row in rows]
         items = self._stock_candidate_contract_items(candidate_rows)
         return StockCandidateContractData(
             as_of=as_of or datetime.now(timezone.utc).date(),
@@ -126,33 +126,11 @@ class CandidateService:
             .group_by(RiskSignal.ticker, RiskSignal.as_of_date)
             .subquery()
         )
-        latest_price_dates = (
-            select(
-                PriceMetric.ticker.label("ticker"),
-                func.max(PriceMetric.trade_date).label("trade_date"),
-            )
-            .group_by(PriceMetric.ticker)
-            .subquery()
-        )
-        latest_prices = (
-            select(
-                PriceMetric.ticker.label("ticker"),
-                PriceMetric.volume.label("volume"),
-            )
-            .join(
-                latest_price_dates,
-                (PriceMetric.ticker == latest_price_dates.c.ticker)
-                & (PriceMetric.trade_date == latest_price_dates.c.trade_date),
-            )
-            .subquery()
-        )
-
         statement = (
             select(
                 Stock,
                 RecommendationScore,
                 risk_counts.c.risk_count,
-                latest_prices.c.volume,
             )
             .join(RecommendationScore, RecommendationScore.ticker == Stock.ticker)
             .outerjoin(
@@ -160,7 +138,6 @@ class CandidateService:
                 (risk_counts.c.ticker == Stock.ticker)
                 & (risk_counts.c.as_of_date == RecommendationScore.as_of_date),
             )
-            .outerjoin(latest_prices, latest_prices.c.ticker == Stock.ticker)
             .where(
                 RecommendationScore.is_candidate_eligible.is_(True),
                 RecommendationScore.evidence_count >= 2,
@@ -175,6 +152,28 @@ class CandidateService:
             statement = statement.where(Stock.sector == sector)
         return statement
 
+    def _latest_price_volume_subquery(self):
+        latest_price_dates = (
+            select(
+                PriceMetric.ticker.label("ticker"),
+                func.max(PriceMetric.trade_date).label("trade_date"),
+            )
+            .group_by(PriceMetric.ticker)
+            .subquery()
+        )
+        return (
+            select(
+                PriceMetric.ticker.label("ticker"),
+                PriceMetric.volume.label("volume"),
+            )
+            .join(
+                latest_price_dates,
+                (PriceMetric.ticker == latest_price_dates.c.ticker)
+                & (PriceMetric.trade_date == latest_price_dates.c.trade_date),
+            )
+            .subquery()
+        )
+
     def _order_stock_candidate_statement(
         self,
         *,
@@ -184,9 +183,14 @@ class CandidateService:
     ):
         selected_columns = statement.selected_columns
         risk_count = func.coalesce(selected_columns.risk_count, 0)
-        latest_volume = func.coalesce(selected_columns.volume, 0)
 
         if sort == "volume_desc":
+            latest_prices = self._latest_price_volume_subquery()
+            latest_volume = func.coalesce(latest_prices.c.volume, 0)
+            statement = statement.add_columns(latest_prices.c.volume).outerjoin(
+                latest_prices,
+                latest_prices.c.ticker == Stock.ticker,
+            )
             return statement.order_by(
                 latest_volume.desc(),
                 RecommendationScore.total_score.desc(),
