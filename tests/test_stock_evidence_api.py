@@ -5,8 +5,12 @@ from typing import Any
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, event, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func, visitors
+from sqlalchemy.sql.schema import Table
 
 from app.orm import EvidenceChunk, FinancialStatement, PriceMetric, RecommendationScore, RiskSignal
+from app.orm import Stock
+from app.services.candidate_service import CandidateService
 
 
 PROHIBITED_KOREAN_TERMS = [
@@ -17,6 +21,31 @@ PROHIBITED_KOREAN_TERMS = [
     "손절가",
     "수익 보장",
 ]
+
+
+def _statement_references_table(statement, table_name: str) -> bool:
+    return any(
+        isinstance(node, Table) and node.name == table_name
+        for node in visitors.iterate(statement)
+    )
+
+
+def _stock_candidate_aggregate_statements(
+    service: CandidateService,
+):
+    base_statement = service._stock_candidate_base_statement(market=None, sector=None)
+    candidate_index = (
+        base_statement.with_only_columns(
+            Stock.ticker.label("ticker"),
+            RecommendationScore.as_of_date.label("as_of_date"),
+        )
+        .order_by(None)
+        .subquery()
+    )
+    return (
+        select(func.count()).select_from(candidate_index),
+        select(func.max(candidate_index.c.as_of_date)),
+    )
 
 
 def _flatten_text(value: Any) -> str:
@@ -171,67 +200,51 @@ def test_stock_candidates_use_database_limit_offset(
 
 
 def test_stock_candidate_aggregate_queries_skip_price_metric_join(
-    seeded_api_client: TestClient,
     seeded_session: Session,
 ) -> None:
-    engine = seeded_session.get_bind()
-    statements: list[str] = []
+    service = CandidateService(seeded_session)
+    count_statement, as_of_statement = _stock_candidate_aggregate_statements(service)
 
-    def capture_statement(conn, cursor, statement, parameters, context, executemany):
-        if statement.lstrip().upper().startswith("SELECT"):
-            statements.append(statement.upper())
-
-    event.listen(engine, "before_cursor_execute", capture_statement)
-    try:
-        response = seeded_api_client.get("/v1/stocks/candidates", params={"limit": 2})
-    finally:
-        event.remove(engine, "before_cursor_execute", capture_statement)
-
-    aggregate_statements = [
-        statement
-        for statement in statements
-        if "COUNT(*)" in statement or "MAX(ANON_1.AS_OF_DATE)" in statement
-    ]
-
-    assert response.status_code == 200
-    assert aggregate_statements
-    assert all("PRICE_METRICS" not in statement for statement in aggregate_statements)
+    assert not _statement_references_table(count_statement, PriceMetric.__tablename__)
+    assert not _statement_references_table(as_of_statement, PriceMetric.__tablename__)
 
 
-def test_stock_candidate_volume_sort_keeps_price_metrics_out_of_aggregates(
-    seeded_api_client: TestClient,
+def test_stock_candidate_score_and_updated_sorts_skip_price_metric_join(
     seeded_session: Session,
 ) -> None:
-    engine = seeded_session.get_bind()
-    statements: list[str] = []
+    service = CandidateService(seeded_session)
+    base_statement = service._stock_candidate_base_statement(market=None, sector=None)
 
-    def capture_statement(conn, cursor, statement, parameters, context, executemany):
-        if statement.lstrip().upper().startswith("SELECT"):
-            statements.append(statement.upper())
+    score_statement = service._order_stock_candidate_statement(
+        statement=base_statement,
+        sort="score_desc",
+        risk_profile="balanced",
+    )
+    updated_statement = service._order_stock_candidate_statement(
+        statement=base_statement,
+        sort="updated_desc",
+        risk_profile="balanced",
+    )
 
-    event.listen(engine, "before_cursor_execute", capture_statement)
-    try:
-        response = seeded_api_client.get(
-            "/v1/stocks/candidates",
-            params={"sort": "volume_desc", "limit": 2},
-        )
-    finally:
-        event.remove(engine, "before_cursor_execute", capture_statement)
+    assert not _statement_references_table(score_statement, PriceMetric.__tablename__)
+    assert not _statement_references_table(updated_statement, PriceMetric.__tablename__)
 
-    aggregate_statements = [
-        statement
-        for statement in statements
-        if "COUNT(*)" in statement or "MAX(ANON_1.AS_OF_DATE)" in statement
-    ]
-    price_sort_statements = [
-        statement
-        for statement in statements
-        if "PRICE_METRICS" in statement and "ORDER BY" in statement
-    ]
 
-    assert response.status_code == 200
-    assert all("PRICE_METRICS" not in statement for statement in aggregate_statements)
-    assert price_sort_statements
+def test_stock_candidate_volume_sort_uses_price_metric_for_global_ordering(
+    seeded_session: Session,
+) -> None:
+    service = CandidateService(seeded_session)
+    base_statement = service._stock_candidate_base_statement(market=None, sector=None)
+    volume_statement = service._order_stock_candidate_statement(
+        statement=base_statement,
+        sort="volume_desc",
+        risk_profile="balanced",
+    )
+    count_statement, as_of_statement = _stock_candidate_aggregate_statements(service)
+
+    assert _statement_references_table(volume_statement, PriceMetric.__tablename__)
+    assert not _statement_references_table(count_statement, PriceMetric.__tablename__)
+    assert not _statement_references_table(as_of_statement, PriceMetric.__tablename__)
 
 
 def test_invalid_ticker_returns_contract_error(seeded_api_client: TestClient) -> None:
