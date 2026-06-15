@@ -5,11 +5,10 @@ from typing import Any
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, event, select
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import func, visitors
+from sqlalchemy.sql import visitors
 from sqlalchemy.sql.schema import Table
 
 from app.orm import EvidenceChunk, FinancialStatement, PriceMetric, RecommendationScore, RiskSignal
-from app.orm import Stock
 from app.services.candidate_service import CandidateService
 
 
@@ -34,18 +33,7 @@ def _stock_candidate_aggregate_statements(
     service: CandidateService,
 ):
     base_statement = service._stock_candidate_base_statement(market=None, sector=None)
-    candidate_index = (
-        base_statement.with_only_columns(
-            Stock.ticker.label("ticker"),
-            RecommendationScore.as_of_date.label("as_of_date"),
-        )
-        .order_by(None)
-        .subquery()
-    )
-    return (
-        select(func.count()).select_from(candidate_index),
-        select(func.max(candidate_index.c.as_of_date)),
-    )
+    return service._stock_candidate_aggregate_statements(base_statement)
 
 
 def _flatten_text(value: Any) -> str:

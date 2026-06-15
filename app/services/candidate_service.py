@@ -84,16 +84,11 @@ class CandidateService:
         offset: int,
     ) -> StockCandidateContractData:
         base_statement = self._stock_candidate_base_statement(market=market, sector=sector)
-        candidate_index = (
-            base_statement.with_only_columns(
-                Stock.ticker.label("ticker"),
-                RecommendationScore.as_of_date.label("as_of_date"),
-            )
-            .order_by(None)
-            .subquery()
+        count_statement, as_of_statement = self._stock_candidate_aggregate_statements(
+            base_statement,
         )
-        total = self.session.scalar(select(func.count()).select_from(candidate_index)) or 0
-        as_of = self.session.scalar(select(func.max(candidate_index.c.as_of_date)))
+        total = self.session.scalar(count_statement) or 0
+        as_of = self.session.scalar(as_of_statement)
         rows = self.session.execute(
             self._order_stock_candidate_statement(
                 statement=base_statement,
@@ -151,6 +146,20 @@ class CandidateService:
         if sector:
             statement = statement.where(Stock.sector == sector)
         return statement
+
+    def _stock_candidate_aggregate_statements(self, base_statement):
+        candidate_index = (
+            base_statement.with_only_columns(
+                Stock.ticker.label("ticker"),
+                RecommendationScore.as_of_date.label("as_of_date"),
+            )
+            .order_by(None)
+            .subquery()
+        )
+        return (
+            select(func.count()).select_from(candidate_index),
+            select(func.max(candidate_index.c.as_of_date)),
+        )
 
     def _latest_price_volume_subquery(self):
         latest_price_dates = (
