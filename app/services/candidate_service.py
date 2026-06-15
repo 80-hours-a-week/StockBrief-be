@@ -155,7 +155,7 @@ class CandidateService:
                 latest_prices.c.volume,
             )
             .join(RecommendationScore, RecommendationScore.ticker == Stock.ticker)
-            .join(
+            .outerjoin(
                 risk_counts,
                 (risk_counts.c.ticker == Stock.ticker)
                 & (risk_counts.c.as_of_date == RecommendationScore.as_of_date),
@@ -183,7 +183,7 @@ class CandidateService:
         risk_profile: RiskProfile,
     ):
         selected_columns = statement.selected_columns
-        risk_count = selected_columns.risk_count
+        risk_count = func.coalesce(selected_columns.risk_count, 0)
         latest_volume = func.coalesce(selected_columns.volume, 0)
 
         if sort == "volume_desc":

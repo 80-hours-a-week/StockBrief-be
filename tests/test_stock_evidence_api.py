@@ -105,6 +105,23 @@ def test_stock_candidates_respect_risk_profile_sorting(
     assert conservative.json()["data"]["items"][0]["ticker"] != "005930"
 
 
+def test_stock_candidates_include_items_without_risk_signals(
+    seeded_api_client: TestClient,
+    seeded_session: Session,
+) -> None:
+    seeded_session.execute(delete(RiskSignal).where(RiskSignal.ticker == "005930"))
+    seeded_session.commit()
+
+    response = seeded_api_client.get(
+        "/v1/stocks/candidates",
+        params={"limit": 100},
+    )
+
+    assert response.status_code == 200
+    tickers = {item["ticker"] for item in response.json()["data"]["items"]}
+    assert "005930" in tickers
+
+
 def test_stock_candidates_bulk_loads_candidate_related_data(
     seeded_api_client: TestClient,
     seeded_session: Session,
