@@ -137,7 +137,7 @@ variable "rds_proxy_security_group_ids" {
 }
 
 variable "lambda_subnet_ids" {
-  description = "Private subnet IDs for Lambda VPC access. Placeholder until VPC module is added."
+  description = "Private subnet IDs for Lambda. MUST have a route to a NAT Gateway to allow external API and Cognito calls."
   type        = list(string)
   default     = []
 }
