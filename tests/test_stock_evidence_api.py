@@ -198,7 +198,7 @@ def test_stock_candidate_aggregate_queries_skip_price_metric_join(
     assert all("PRICE_METRICS" not in statement for statement in aggregate_statements)
 
 
-def test_stock_candidate_volume_sort_joins_price_metrics_on_paged_query(
+def test_stock_candidate_volume_sort_keeps_price_metrics_out_of_aggregates(
     seeded_api_client: TestClient,
     seeded_session: Session,
 ) -> None:
@@ -223,15 +223,15 @@ def test_stock_candidate_volume_sort_joins_price_metrics_on_paged_query(
         for statement in statements
         if "COUNT(*)" in statement or "MAX(ANON_1.AS_OF_DATE)" in statement
     ]
-    price_limited_statements = [
+    price_sort_statements = [
         statement
         for statement in statements
-        if "PRICE_METRICS" in statement and " LIMIT " in statement
+        if "PRICE_METRICS" in statement and "ORDER BY" in statement
     ]
 
     assert response.status_code == 200
     assert all("PRICE_METRICS" not in statement for statement in aggregate_statements)
-    assert price_limited_statements
+    assert price_sort_statements
 
 
 def test_invalid_ticker_returns_contract_error(seeded_api_client: TestClient) -> None:

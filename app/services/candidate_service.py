@@ -185,6 +185,8 @@ class CandidateService:
         risk_count = func.coalesce(selected_columns.risk_count, 0)
 
         if sort == "volume_desc":
+            # Volume is a global ordering key, so the price join must run before
+            # LIMIT/OFFSET. The aggregate count/as_of queries still avoid it.
             latest_prices = self._latest_price_volume_subquery()
             latest_volume = func.coalesce(latest_prices.c.volume, 0)
             statement = statement.add_columns(latest_prices.c.volume).outerjoin(
