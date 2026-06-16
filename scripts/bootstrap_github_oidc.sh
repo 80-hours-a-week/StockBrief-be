@@ -210,6 +210,7 @@ fi
 owner_escaped="$(json_escape "$github_owner")"
 repo_escaped="$(json_escape "$github_repo")"
 branch_escaped="$(json_escape "$github_branch")"
+environment_escaped="$(json_escape "$environment")"
 
 cat >"${tmpdir}/trust-policy.json" <<POLICY
 {
@@ -223,10 +224,8 @@ cat >"${tmpdir}/trust-policy.json" <<POLICY
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "${oidc_provider_url}:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "${oidc_provider_url}:sub": "repo:${owner_escaped}/${repo_escaped}:ref:refs/heads/${branch_escaped}"
+          "${oidc_provider_url}:aud": "sts.amazonaws.com",
+          "${oidc_provider_url}:sub": "repo:${owner_escaped}/${repo_escaped}:environment:${environment_escaped}"
         }
       }
     }
@@ -451,6 +450,23 @@ aws iam put-role-policy \
   --role-name "$role_name" \
   --policy-name "$new_policy_name" \
   --policy-document "file://${tmpdir}/deploy-policy.json" >/dev/null
+
+echo "Configuring GitHub Environment branch policy: ${repo_full_name}/${environment}"
+gh api --method PUT "repos/${repo_full_name}/environments/${environment}" \
+  -F wait_timer=0 \
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true' >/dev/null
+
+existing_branch_policy_id="$(
+  gh api "repos/${repo_full_name}/environments/${environment}/deployment-branch-policies" \
+    --jq ".branch_policies[] | select(.name == \"${branch_escaped}\" and .type == \"branch\") | .id"
+)"
+
+if [ -z "$existing_branch_policy_id" ]; then
+  gh api --method POST "repos/${repo_full_name}/environments/${environment}/deployment-branch-policies" \
+    -f name="$github_branch" \
+    -f type=branch >/dev/null
+fi
 
 echo "Setting GitHub repository variables on ${repo_full_name}"
 gh variable set "$deploy_role_var" --repo "$repo_full_name" --body "$role_arn" >/dev/null

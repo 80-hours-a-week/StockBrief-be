@@ -66,6 +66,8 @@ The script creates or updates:
 - DynamoDB Terraform lock table.
 - IAM OIDC provider for GitHub Actions.
 - IAM deploy role scoped to `80-hours-a-week/StockBrief-be` `main`.
+- GitHub Environment named `dev` with a custom deployment branch policy that
+  allows only `main`.
 - GitHub repository variables:
   - `AWS_DEV_DEPLOY_ROLE_ARN`
   - `OPERATIONAL_ALARM_EMAILS_JSON`
@@ -150,6 +152,17 @@ API Gateway, Cognito, Secrets Manager, and alarms are managed by Terraform.
 5. Update Secrets Manager values outside git when keys or DB connection values
    change.
 
+Because `backend-dev-deploy` uses `environment: dev`, the OIDC trust policy uses
+this subject:
+
+```text
+repo:80-hours-a-week/StockBrief-be:environment:dev
+```
+
+The branch restriction is enforced by the GitHub Environment deployment branch
+policy. The bootstrap script configures the `dev` environment to allow only the
+`main` branch.
+
 The dev workflow uses `infra/terraform/backend.tf`, so it always targets the
 backend committed in that file. If a new environment needs a different backend,
 create a dedicated workflow or update the backend configuration in the same PR
@@ -169,8 +182,8 @@ bootstrap:
 
 - Bootstrap identity: creates the first state bucket, lock table, OIDC provider,
   deploy role, and GitHub variables.
-- Deploy role: assumed by GitHub Actions from the `main` branch to update the
-  existing backend stack.
+- Deploy role: assumed by GitHub Actions jobs that target the `dev` Environment.
+  The `dev` Environment branch policy allows only `main` deployments.
 
 The deploy role keeps Terraform state bucket and lock table permissions scoped
 to exact ARNs. Service deployment actions are enumerated instead of using broad

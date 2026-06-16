@@ -102,13 +102,13 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    terraform init
    terraform fmt -check -recursive
    terraform validate
-   terraform plan -var-file=envs/dev/terraform.tfvars
+   terraform plan -var-file=envs/dev/deploy.auto.tfvars.json
    ```
 
 6. Review the plan. Apply only after placeholders, cost expectations, deletion protection, networking, and secret handling are approved:
 
    ```bash
-   terraform apply -var-file=envs/dev/terraform.tfvars
+   terraform apply -var-file=envs/dev/deploy.auto.tfvars.json
    ```
 
 7. After resources exist, update Secrets Manager values outside git and redeploy Lambda/Amplify as needed.
@@ -143,7 +143,7 @@ backend change, run:
 
 ```bash
 terraform state list
-terraform plan -var-file=envs/dev/terraform.tfvars
+terraform plan -var-file=envs/dev/deploy.auto.tfvars.json
 ```
 
 For GitHub Actions, `backend-dev-deploy` initializes Terraform with the committed
@@ -370,6 +370,17 @@ The dev backend deployment uses GitHub Actions OIDC instead of long-lived AWS
 access keys. The `backend-dev-deploy` workflow runs on pushes to `main` and on
 manual dispatch. The deploy job is attached to the GitHub Environment named
 `dev`.
+
+Because the job uses `environment: dev`, the IAM OIDC trust policy expects the
+GitHub token subject to be:
+
+```text
+repo:80-hours-a-week/StockBrief-be:environment:dev
+```
+
+The `dev` GitHub Environment uses a custom deployment branch policy that allows
+only the `main` branch. Keep that branch policy aligned with the IAM trust
+policy whenever the workflow branch or environment name changes.
 
 Bootstrap resources:
 
