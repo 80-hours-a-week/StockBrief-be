@@ -41,6 +41,12 @@ infra/terraform
 
 Do not run `terraform apply` until AWS account, networking, repository connection, and secrets process are confirmed.
 
+For a new AWS account or environment, first run the one-time GitHub OIDC and
+Terraform state bootstrap documented in
+`docs/engineering/DEPLOYMENT_BOOTSTRAP.md`. The bootstrap creates the remote
+state bucket, lock table, GitHub Actions OIDC provider, deploy role, and GitHub
+repository variables required by `.github/workflows/backend-dev-deploy.yml`.
+
 1. Package the backend Lambda zip:
 
    ```bash
