@@ -431,9 +431,20 @@ legacy_policy_name="stockbrief-${environment}-backend-deploy"
 new_policy_name="stockbrief-${environment}-deploy-access"
 
 if [ "$legacy_policy_name" != "$new_policy_name" ]; then
-  aws iam delete-role-policy \
+  legacy_delete_error="${tmpdir}/delete-legacy-policy.err"
+  if ! aws iam delete-role-policy \
     --role-name "$role_name" \
-    --policy-name "$legacy_policy_name" >/dev/null 2>&1 || true
+    --policy-name "$legacy_policy_name" 2>"$legacy_delete_error"; then
+    legacy_delete_message="$(cat "$legacy_delete_error")"
+    case "$legacy_delete_message" in
+      *NoSuchEntity*)
+        ;;
+      *)
+        printf '%s\n' "$legacy_delete_message" >&2
+        exit 1
+        ;;
+    esac
+  fi
 fi
 
 aws iam put-role-policy \
