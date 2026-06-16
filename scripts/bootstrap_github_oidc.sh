@@ -427,9 +427,18 @@ else
     --assume-role-policy-document "file://${tmpdir}/trust-policy.json" >/dev/null
 fi
 
+legacy_policy_name="stockbrief-${environment}-backend-deploy"
+new_policy_name="stockbrief-${environment}-deploy-access"
+
+if [ "$legacy_policy_name" != "$new_policy_name" ]; then
+  aws iam delete-role-policy \
+    --role-name "$role_name" \
+    --policy-name "$legacy_policy_name" >/dev/null 2>&1 || true
+fi
+
 aws iam put-role-policy \
   --role-name "$role_name" \
-  --policy-name "stockbrief-${environment}-deploy-access" \
+  --policy-name "$new_policy_name" \
   --policy-document "file://${tmpdir}/deploy-policy.json" >/dev/null
 
 echo "Setting GitHub repository variables on ${repo_full_name}"
