@@ -107,16 +107,30 @@ done
 
 require_command aws
 require_command gh
+require_command python3
 require_command sed
 
-case "$alarm_emails_json" in
-  \[*\])
-    ;;
-  *)
-    echo "--alarm-emails-json must be a JSON array string, for example '[\"ops@example.com\"]'." >&2
-    exit 1
-    ;;
-esac
+if ! python3 - "$alarm_emails_json" <<'PY'
+import json
+import sys
+
+try:
+    value = json.loads(sys.argv[1])
+except json.JSONDecodeError as exc:
+    print(f"--alarm-emails-json must be valid JSON: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+    print(
+        "--alarm-emails-json must be a JSON array of strings, "
+        "for example '[\"ops@example.com\"]'.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
+then
+  exit 1
+fi
 
 account_id="$(aws sts get-caller-identity --query Account --output text)"
 if [ -z "$account_id" ] || [ "$account_id" = "None" ]; then
@@ -261,10 +275,40 @@ cat >"${tmpdir}/deploy-policy.json" <<POLICY
       "Sid": "DevBackendDeployment",
       "Effect": "Allow",
       "Action": [
-        "apigateway:*",
-        "cloudformation:*",
-        "cloudwatch:*",
-        "cognito-idp:*",
+        "apigateway:DELETE",
+        "apigateway:GET",
+        "apigateway:PATCH",
+        "apigateway:POST",
+        "apigateway:PUT",
+        "cloudformation:CreateStack",
+        "cloudformation:DeleteStack",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStacks",
+        "cloudformation:GetTemplate",
+        "cloudformation:ListStackResources",
+        "cloudformation:UpdateStack",
+        "cloudformation:ValidateTemplate",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:ListTagsForResource",
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource",
+        "cognito-idp:CreateUserPool",
+        "cognito-idp:CreateUserPoolClient",
+        "cognito-idp:CreateUserPoolDomain",
+        "cognito-idp:DeleteUserPool",
+        "cognito-idp:DeleteUserPoolClient",
+        "cognito-idp:DeleteUserPoolDomain",
+        "cognito-idp:DescribeUserPool",
+        "cognito-idp:DescribeUserPoolClient",
+        "cognito-idp:DescribeUserPoolDomain",
+        "cognito-idp:GetUserPoolMfaConfig",
+        "cognito-idp:ListTagsForResource",
+        "cognito-idp:TagResource",
+        "cognito-idp:UntagResource",
+        "cognito-idp:UpdateUserPool",
+        "cognito-idp:UpdateUserPoolClient",
         "ec2:AuthorizeSecurityGroupEgress",
         "ec2:AuthorizeSecurityGroupIngress",
         "ec2:CreateSecurityGroup",
@@ -275,8 +319,10 @@ cat >"${tmpdir}/deploy-policy.json" <<POLICY
         "ec2:DeleteVpcEndpoints",
         "ec2:DescribeAvailabilityZones",
         "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribePrefixLists",
         "ec2:DescribeRouteTables",
         "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSecurityGroupRules",
         "ec2:DescribeSubnets",
         "ec2:DescribeVpcEndpointServices",
         "ec2:DescribeVpcEndpoints",
@@ -285,12 +331,82 @@ cat >"${tmpdir}/deploy-policy.json" <<POLICY
         "ec2:ModifyVpcEndpoint",
         "ec2:RevokeSecurityGroupEgress",
         "ec2:RevokeSecurityGroupIngress",
-        "iam:*",
-        "lambda:*",
-        "logs:*",
-        "rds:*",
-        "secretsmanager:*",
-        "sns:*",
+        "iam:AttachRolePolicy",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:GetPolicy",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags",
+        "iam:PassRole",
+        "iam:PutRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy",
+        "lambda:AddPermission",
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionCodeSigningConfig",
+        "lambda:GetPolicy",
+        "lambda:ListTags",
+        "lambda:ListVersionsByFunction",
+        "lambda:RemovePermission",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:DescribeLogGroups",
+        "logs:ListTagsForResource",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:UntagResource",
+        "rds:AddTagsToResource",
+        "rds:CreateDBInstance",
+        "rds:CreateDBProxy",
+        "rds:CreateDBSubnetGroup",
+        "rds:DeleteDBInstance",
+        "rds:DeleteDBProxy",
+        "rds:DeleteDBSubnetGroup",
+        "rds:DeregisterDBProxyTargets",
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBProxies",
+        "rds:DescribeDBProxyTargetGroups",
+        "rds:DescribeDBProxyTargets",
+        "rds:DescribeDBSubnetGroups",
+        "rds:ListTagsForResource",
+        "rds:ModifyDBInstance",
+        "rds:ModifyDBProxy",
+        "rds:ModifyDBProxyTargetGroup",
+        "rds:RegisterDBProxyTargets",
+        "rds:RemoveTagsFromResource",
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource",
+        "secretsmanager:UpdateSecret",
+        "sns:CreateTopic",
+        "sns:DeleteTopic",
+        "sns:GetSubscriptionAttributes",
+        "sns:GetTopicAttributes",
+        "sns:ListSubscriptionsByTopic",
+        "sns:ListTagsForResource",
+        "sns:SetTopicAttributes",
+        "sns:Subscribe",
+        "sns:TagResource",
+        "sns:Unsubscribe",
+        "sns:UntagResource",
         "sts:GetCallerIdentity"
       ],
       "Resource": "*"
@@ -313,7 +429,7 @@ fi
 
 aws iam put-role-policy \
   --role-name "$role_name" \
-  --policy-name "stockbrief-${environment}-backend-deploy" \
+  --policy-name "stockbrief-${environment}-deploy-access" \
   --policy-document "file://${tmpdir}/deploy-policy.json" >/dev/null
 
 echo "Setting GitHub repository variables on ${repo_full_name}"

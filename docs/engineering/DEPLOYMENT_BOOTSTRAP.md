@@ -73,9 +73,15 @@ The script creates or updates:
 The deploy role policy is intentionally broad enough for the current dev
 Terraform deployment. Tighten it after the deployment surface stabilizes.
 
+`--alarm-emails-json` must be valid JSON and must be an array of strings. The
+script validates this with Python before writing the GitHub repository variable.
+
 ## After Bootstrap
 
-Make sure Terraform uses the state backend printed by the script:
+Make sure Terraform uses the state backend printed by the script. Terraform
+backend configuration is evaluated during `terraform init`, before regular
+variables are loaded, so the selected backend is an operational choice that must
+be checked explicitly.
 
 ```hcl
 terraform {
@@ -88,6 +94,26 @@ terraform {
   }
 }
 ```
+
+Environment state convention:
+
+| Environment | Backend key | Expected use |
+| --- | --- | --- |
+| `dev` | `stockbrief/dev/terraform.tfstate` | Current automated backend deployment |
+| `staging` | `stockbrief/staging/terraform.tfstate` | Future pre-production environment |
+| `prod` | `stockbrief/prod/terraform.tfstate` | Future production environment |
+
+Use a separate account, bucket, or key per environment. Do not point staging or
+prod at the dev state key.
+
+When switching an existing local checkout to a different backend:
+
+- Use `terraform init -reconfigure` when the target backend is empty or you are
+  intentionally selecting a different existing state.
+- Use `terraform init -migrate-state` only when moving the same state to a new
+  backend location.
+- Never run `terraform apply` after changing `backend.tf` until
+  `terraform state list` shows the expected environment resources.
 
 Then check the dev deploy variable file:
 
@@ -118,11 +144,48 @@ API Gateway, Cognito, Secrets Manager, and alarms are managed by Terraform.
 ## Deployment Flow After Bootstrap
 
 1. Merge backend changes into `main`.
-2. GitHub Actions runs `backend-dev-deploy`.
+2. GitHub Actions runs `backend-dev-deploy` in the `dev` GitHub Environment.
 3. The workflow assumes `AWS_DEV_DEPLOY_ROLE_ARN` through OIDC.
 4. The workflow packages Lambda, runs Terraform plan, and applies the dev stack.
 5. Update Secrets Manager values outside git when keys or DB connection values
    change.
+
+The dev workflow uses `infra/terraform/backend.tf`, so it always targets the
+backend committed in that file. If a new environment needs a different backend,
+create a dedicated workflow or update the backend configuration in the same PR
+as the environment tfvars change.
+
+`AWS_DEV_DEPLOY_ROLE_ARN` and `OPERATIONAL_ALARM_EMAILS_JSON` may live as
+repository variables or `dev` environment variables. Prefer environment
+variables when the repository has multiple deploy environments. Add GitHub
+Environment required reviewers later if the team wants manual approval before
+dev apply.
+
+## Deploy Role Permission Model
+
+The bootstrap script creates a GitHub Actions deploy role for Terraform-driven
+backend changes. The role is separate from the administrator identity used to run
+bootstrap:
+
+- Bootstrap identity: creates the first state bucket, lock table, OIDC provider,
+  deploy role, and GitHub variables.
+- Deploy role: assumed by GitHub Actions from the `main` branch to update the
+  existing backend stack.
+
+The deploy role keeps Terraform state bucket and lock table permissions scoped
+to exact ARNs. Service deployment actions are enumerated instead of using broad
+service wildcards such as `lambda:*` or `iam:*`. Some create, describe, and tag
+APIs still require `Resource: "*"` because the resource ARN is not known before
+creation or the AWS API does not support resource-level permissions for that
+operation.
+
+After changing Terraform resources, re-run:
+
+```bash
+scripts/bootstrap_github_oidc.sh --alarm-emails-json '["ops@example.com"]'
+```
+
+Then verify the updated role with a real `backend-dev-deploy` workflow run.
 
 ## New Environment Checklist
 
@@ -130,6 +193,10 @@ API Gateway, Cognito, Secrets Manager, and alarms are managed by Terraform.
 - Update `infra/terraform/backend.tf` for that account and region.
 - Update `infra/terraform/envs/dev/deploy.auto.tfvars.json` for that network and
   frontend URL.
+- Run `terraform init -reconfigure` or `terraform init -migrate-state` according
+  to the backend change type.
+- Confirm `terraform state list` points to the intended environment before
+  applying.
 - Confirm SNS alert email subscriptions after Terraform creates them.
 - Fill secret values in AWS Secrets Manager. Do not commit secret values.
 - Keep FE Amplify app setup in the console unless the team decides to manage

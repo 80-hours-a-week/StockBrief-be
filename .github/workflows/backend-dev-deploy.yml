@@ -23,6 +23,7 @@ jobs:
   deploy-dev:
     name: Deploy dev backend
     runs-on: ubuntu-latest
+    environment: dev
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
