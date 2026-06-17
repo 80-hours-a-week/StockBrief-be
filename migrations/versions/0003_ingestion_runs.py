@@ -35,7 +35,7 @@ def upgrade() -> None:
             "target_scope",
             sa.JSON(),
             nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
+            server_default=sa.text("'{}'"),
         ),
         # started | succeeded | partial_failed | failed | replayed
         sa.Column("status", sa.Text(), nullable=False),
@@ -56,7 +56,7 @@ def upgrade() -> None:
             "result_counts",
             sa.JSON(),
             nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
+            server_default=sa.text("'{}'"),
         ),
         # {"error_type": "rate_limited", "message": "..."} — null on success
         sa.Column("error_summary", sa.JSON(), nullable=True),
