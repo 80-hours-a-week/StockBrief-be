@@ -1,5 +1,5 @@
 locals {
-  enabled = var.db_instance_identifier != "" && length(var.subnet_ids) > 0
+  enabled = var.enabled && var.db_instance_identifier != "" && length(var.subnet_ids) > 0
 }
 
 data "aws_iam_policy_document" "assume_rds" {

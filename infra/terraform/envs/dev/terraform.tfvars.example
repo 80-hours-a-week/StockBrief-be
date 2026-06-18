@@ -22,6 +22,8 @@ db_backup_retention_period = 1
 # Fill these after the dev VPC/subnets/security groups are chosen.
 db_subnet_ids             = []
 db_security_group_ids     = []
+rds_proxy_security_group_ids = []
+enable_rds_proxy         = false
 lambda_subnet_ids         = []
 lambda_security_group_ids = []
 

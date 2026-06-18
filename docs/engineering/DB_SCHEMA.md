@@ -302,6 +302,38 @@ Stores external API request logs without secrets.
 | `error_code` | text | no | `rate_limited` | Error code. |
 | `called_at` | timestamptz | yes | `2026-06-09T09:00:00Z` | Request time. |
 
+### ingestion_runs
+
+Stores ingestion execution state so provider jobs can be retried or replayed
+without duplicate writes.
+
+| Field | Type | Required | Example | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | uuid | yes | `...` | Primary key. |
+| `run_id` | text | yes | `opendart-20260618-005930` | Public stable run key. |
+| `job_type` | text | yes | `disclosure` | `disclosure`, `news`, `price`, `financial`, `score`. |
+| `provider` | text | yes | `OpenDART` | Provider or source name. |
+| `target_scope` | jsonb | yes | `{"ticker":"005930"}` | Ticker, date range, or batch scope. |
+| `status` | text | yes | `started` | `started`, `succeeded`, `partial_failed`, `failed`, `replayed`. |
+| `input_hash` | text | yes | `sha256:...` | Hash of normalized job input. |
+| `started_at` | timestamptz | yes | `2026-06-18T09:00:00Z` | Run start time. |
+| `completed_at` | timestamptz | no | `2026-06-18T09:01:00Z` | Run completion time. |
+| `result_counts` | jsonb | yes | `{"inserted":1,"updated":2}` | Insert, update, skip, and error counts. |
+| `error_summary` | jsonb | no | `{"code":"rate_limited"}` | Sanitized error summary. |
+| `created_at` | timestamptz | yes | `2026-06-18T09:00:00Z` | Inserted time. |
+| `updated_at` | timestamptz | yes | `2026-06-18T09:01:00Z` | Last state change. |
+
+Provider upsert keys:
+
+| Provider data | Upsert key |
+| --- | --- |
+| OpenDART disclosure | `provider + receipt_no` |
+| NAVER news | `provider + source_url_hash` or provider article id |
+| KRX price | `ticker + trade_date + source` |
+| Financial statement | `ticker + fiscal_year + fiscal_period + source_document_id` |
+| Source document | `source_type + source_name + external_id`, fallback `content_hash` |
+| Score | `ticker + as_of_date + score_version` |
+
 ### chat_sessions
 
 Stores guest chat sessions.
@@ -344,11 +376,14 @@ Stores user and assistant chat messages with safety metadata.
 - Unique `recommendation_scores(ticker, as_of_date, score_version)`.
 - Unique `recommendation_reasons.reason_id`.
 - Unique `api_cache_entries.cache_key`.
+- Unique `ingestion_runs.run_id`.
 - Unique `chat_sessions.session_id`.
 - Unique `chat_messages.message_id`.
 - Index `recommendation_scores(as_of_date, is_candidate_eligible, total_score desc)`.
 - Index `evidence_chunks(ticker, evidence_type)`.
 - Index `risk_signals(ticker, as_of)`.
+- Index `ingestion_runs(job_type, provider, status)`.
+- Index `ingestion_runs(started_at)`.
 
 ## 5. Recommendation Score JSON Example
 

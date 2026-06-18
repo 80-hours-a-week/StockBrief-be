@@ -3,14 +3,12 @@
 This document explains how to prepare a new AWS account or environment so the
 backend can deploy from GitHub Actions without long-lived AWS access keys.
 
-The current dev account is already bootstrapped:
+The previous dev AWS account is no longer assumed to exist. Treat each new dev
+environment as a fresh AWS account bootstrap unless the active state bucket,
+lock table, and deploy role have been confirmed in the target account.
 
-- AWS account: `420615923610`
-- Region: `ap-northeast-2`
-- Terraform state bucket: `stockbrief-terraform-state-420615923610-ap-northeast-2`
-- Terraform lock table: `stockbrief-terraform-locks`
-- GitHub Actions deploy role: `stockbrief-dev-github-actions-deploy`
-- Frontend Amplify app: console-managed, not Terraform-managed
+For the current reset path, follow `docs/engineering/NEW_AWS_BOOTSTRAP.md`
+before running any Terraform plan or apply against real AWS resources.
 
 ## Why Bootstrap Is One-Time
 
@@ -57,7 +55,7 @@ scripts/bootstrap_github_oidc.sh \
   --region ap-northeast-2 \
   --github-owner 80-hours-a-week \
   --github-repo StockBrief-be \
-  --alarm-emails-json '["ops@example.com"]'
+  --alarm-emails-json '["REPLACE_WITH_ALERT_EMAIL"]'
 ```
 
 The script creates or updates:
@@ -134,7 +132,7 @@ Confirm these values match the target AWS account:
 - `cognito_logout_urls`
 - `cognito_hosted_ui_domain_prefix`
 
-For the current approach, keep this value:
+For the first backend-only deployment, keep this value:
 
 ```json
 "enable_amplify": false
@@ -192,10 +190,10 @@ APIs still require `Resource: "*"` because the resource ARN is not known before
 creation or the AWS API does not support resource-level permissions for that
 operation.
 
-After changing Terraform resources, re-run:
+After changing Terraform-managed service permissions, re-run:
 
 ```bash
-scripts/bootstrap_github_oidc.sh --alarm-emails-json '["ops@example.com"]'
+scripts/bootstrap_github_oidc.sh --alarm-emails-json '["REPLACE_WITH_ALERT_EMAIL"]'
 ```
 
 Then verify the updated role with a real `backend-dev-deploy` workflow run.

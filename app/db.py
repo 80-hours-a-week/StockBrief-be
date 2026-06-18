@@ -1,6 +1,6 @@
 from collections.abc import Generator
 from functools import lru_cache
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -70,10 +70,17 @@ def _database_url_from_secret_credentials(secret: dict[str, object]) -> str | No
         return None
     user = quote(username, safe="")
     secret_password = quote(password, safe="")
-    return (
-        f"postgresql+psycopg://{user}:{secret_password}"
-        f"@{settings.database_host}:{settings.database_port}/{settings.database_name}"
-    )
+    netloc = _format_database_netloc(settings.database_host, settings.database_port)
+    return f"postgresql+psycopg://{user}:{secret_password}@{netloc}/{settings.database_name}"
+
+
+def _format_database_netloc(database_host: str, database_port: int) -> str:
+    parsed = urlsplit(f"//{database_host.strip()}")
+    hostname = parsed.hostname or database_host.strip()
+    port = parsed.port or database_port
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    return f"{hostname}:{port}"
 
 
 def _pool_options(settings) -> dict[str, int]:

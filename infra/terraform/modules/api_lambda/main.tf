@@ -95,7 +95,7 @@ resource "aws_apigatewayv2_api" "http" {
 }
 
 locals {
-  jwt_authorizer_enabled = var.jwt_authorizer_issuer != "" && length(var.jwt_authorizer_audience) > 0
+  jwt_authorizer_enabled = var.jwt_authorizer_enabled && length(var.jwt_authorizer_audience) > 0
 }
 
 resource "aws_apigatewayv2_authorizer" "cognito" {

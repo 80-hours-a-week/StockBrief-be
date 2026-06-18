@@ -154,6 +154,12 @@ variable "rds_proxy_security_group_ids" {
   default     = []
 }
 
+variable "enable_rds_proxy" {
+  description = "Whether to create RDS Proxy. Disable for the first low-cost dev bootstrap; enable when Lambda concurrency requires connection pooling."
+  type        = bool
+  default     = false
+}
+
 variable "lambda_subnet_ids" {
   description = "Private subnet IDs for Lambda. MUST have a route to a NAT Gateway to allow external API and Cognito calls."
   type        = list(string)

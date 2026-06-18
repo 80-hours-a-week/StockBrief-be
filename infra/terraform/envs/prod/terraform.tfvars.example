@@ -18,6 +18,7 @@ db_allocated_storage_gb    = 100
 db_deletion_protection     = true
 db_skip_final_snapshot     = false
 db_backup_retention_period = 7
+enable_rds_proxy           = true
 
 db_subnet_ids             = []
 db_security_group_ids     = []

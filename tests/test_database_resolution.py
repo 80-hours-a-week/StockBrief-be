@@ -76,6 +76,32 @@ def test_resolve_database_url_builds_proxy_url_from_secret_credentials(monkeypat
     )
 
 
+def test_resolve_database_url_accepts_host_with_port_from_rds_endpoint(monkeypatch) -> None:
+    monkeypatch.setattr(
+        db,
+        "get_settings",
+        lambda: Settings(
+            APP_ENV="prod",
+            DATABASE_URL="",
+            DATABASE_SECRET_ARN="arn:aws:secretsmanager:ap-northeast-2:123:secret:stockbrief",
+            DATABASE_HOST="stockbrief-dev-postgres.example.ap-northeast-2.rds.amazonaws.com:5432",
+            DATABASE_PORT=5432,
+            DATABASE_NAME="stockbrief",
+        ),
+    )
+    monkeypatch.setattr(
+        db,
+        "load_secret_json",
+        lambda _secret_id: {"username": "stockbrief_admin", "password": "secret/pass"},
+    )
+    db.resolve_database_url.cache_clear()
+
+    assert (
+        db.resolve_database_url()
+        == "postgresql+psycopg://stockbrief_admin:secret%2Fpass@stockbrief-dev-postgres.example.ap-northeast-2.rds.amazonaws.com:5432/stockbrief"
+    )
+
+
 def test_pool_options_are_configurable_for_postgresql(monkeypatch) -> None:
     settings = Settings(
         DATABASE_URL="postgresql+psycopg://stockbrief:stockbrief@db.example:5432/stockbrief",

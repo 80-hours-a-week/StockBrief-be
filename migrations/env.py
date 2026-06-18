@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.config import get_settings
+from app.db import resolve_database_url
 from app.orm import Base
 
 config = context.config
@@ -15,7 +16,10 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return get_settings().database_url
+    settings = get_settings()
+    if settings.app_env == "local" and settings.database_url:
+        return settings.database_url
+    return resolve_database_url()
 
 
 def run_migrations_offline() -> None:
@@ -51,4 +55,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
