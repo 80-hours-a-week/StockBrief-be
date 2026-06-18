@@ -166,6 +166,77 @@ def test_active_run_cannot_be_restarted(db_session: Session) -> None:
         )
 
 
+def test_insert_race_recovers_to_existing_succeeded_run(
+    monkeypatch,
+    db_session: Session,
+) -> None:
+    service = IngestionIdempotencyService(db_session)
+
+    def fake_start_run(**kwargs):
+        db_session.add(
+            IngestionRun(
+                run_id=kwargs["run_id"],
+                job_type=kwargs["job_type"],
+                provider=kwargs["provider"],
+                target_scope=kwargs["target_scope"],
+                status="succeeded",
+                input_hash=kwargs["input_hash"],
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
+                result_counts={"inserted": 1},
+            )
+        )
+        db_session.commit()
+        raise IntegrityError("insert", {}, Exception("unique violation"))
+
+    monkeypatch.setattr(service, "start_run", fake_start_run)
+
+    recovered = service.start_or_restart_run(
+        run_id="opendart-20260618-005930",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930"},
+        input_hash="same-hash",
+    )
+
+    assert recovered.status == "succeeded"
+    assert recovered.result_counts == {"inserted": 1}
+
+
+def test_insert_race_recovers_to_existing_active_run_guard(
+    monkeypatch,
+    db_session: Session,
+) -> None:
+    service = IngestionIdempotencyService(db_session)
+
+    def fake_start_run(**kwargs):
+        db_session.add(
+            IngestionRun(
+                run_id=kwargs["run_id"],
+                job_type=kwargs["job_type"],
+                provider=kwargs["provider"],
+                target_scope=kwargs["target_scope"],
+                status="started",
+                input_hash=kwargs["input_hash"],
+                started_at=datetime.now(timezone.utc),
+                result_counts={},
+            )
+        )
+        db_session.commit()
+        raise IntegrityError("insert", {}, Exception("unique violation"))
+
+    monkeypatch.setattr(service, "start_run", fake_start_run)
+
+    with pytest.raises(ValueError, match="ingestion_run_already_active"):
+        service.start_or_restart_run(
+            run_id="opendart-20260618-005930",
+            job_type="disclosure",
+            provider="OpenDART",
+            target_scope={"ticker": "005930"},
+            input_hash="same-hash",
+        )
+
+
 def test_status_transitions_record_completion_payloads(db_session: Session) -> None:
     service = IngestionIdempotencyService(db_session)
     run = service.start_run(

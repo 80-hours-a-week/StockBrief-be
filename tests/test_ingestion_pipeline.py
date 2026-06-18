@@ -10,6 +10,7 @@ from app.config import Settings
 from app.orm import Disclosure, IngestionRun, NewsItem, SourceDocument
 from app.services.external.clients import NAVER_PROVIDER, OPENDART_PROVIDER
 from app.services.external.types import ExternalApiResult
+from app.services import ingestion as ingestion_module
 from app.services.ingestion import (
     NoopPayloadArchiver,
     ProviderIngestionRequest,
@@ -334,6 +335,92 @@ def test_provider_fallback_marks_partial_failed_without_persisting_rows(
         "skipped": 1,
     }
     assert result["results"][0]["error_summary"]["code"] == "provider_fallback"
+
+
+def test_persist_failure_rolls_back_normalized_rows_before_marking_failed(
+    monkeypatch,
+    seeded_session: Session,
+) -> None:
+    def fake_list_disclosures(self, *, ticker: str, corp_code=None, page_count: int = 10):
+        return ExternalApiResult(
+            provider=OPENDART_PROVIDER,
+            endpoint="/list.json",
+            cache_key=f"disclosures:{ticker}:mock:{page_count}",
+            data_status="available",
+            status_code=200,
+            payload={
+                "list": [
+                    {
+                        "rcept_no": "202606180001",
+                        "report_nm": "반기보고서",
+                        "rcept_dt": "20260618",
+                        "rm": "정기공시",
+                    },
+                    {
+                        "rcept_no": "202606180002",
+                        "report_nm": "정정공시",
+                        "rcept_dt": "20260618",
+                        "rm": "정정",
+                    },
+                ]
+            },
+        )
+
+    original_upsert = ingestion_module.upsert_source_document
+    calls = {"count": 0}
+
+    def failing_upsert(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise RuntimeError("normalized_write_failed")
+        return original_upsert(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "app.services.ingestion.OpenDartClient.list_disclosures",
+        fake_list_disclosures,
+    )
+    monkeypatch.setattr("app.services.ingestion.upsert_source_document", failing_upsert)
+    service = ProviderIngestionService(
+        seeded_session,
+        settings=Settings(OPENDART_API_KEY="test-key"),
+        archiver=NoopPayloadArchiver(),
+    )
+
+    result = service.run_provider_batch(
+        ProviderIngestionRequest(
+            provider=OPENDART_PROVIDER,
+            tickers=["005930"],
+            source_date="2026-06-18",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["results"][0]["status"] == "failed"
+
+    run = seeded_session.scalars(
+        select(IngestionRun).where(
+            IngestionRun.run_id == build_run_id(
+                provider=OPENDART_PROVIDER,
+                source_date="2026-06-18",
+                ticker="005930",
+            )
+        )
+    ).one()
+    assert run.status == "failed"
+
+    leaked_source = seeded_session.scalars(
+        select(SourceDocument).where(
+            SourceDocument.source_name == OPENDART_PROVIDER,
+            SourceDocument.external_id.in_(["202606180001", "202606180002"]),
+        )
+    ).all()
+    leaked_disclosures = seeded_session.scalars(
+        select(Disclosure).where(
+            Disclosure.receipt_no.in_(["202606180001", "202606180002"])
+        )
+    ).all()
+    assert leaked_source == []
+    assert leaked_disclosures == []
 
 
 def test_handle_ingestion_event_raises_for_scheduled_failure(monkeypatch) -> None:

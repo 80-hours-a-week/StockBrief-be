@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.orm import IngestionRun
@@ -74,13 +75,23 @@ class IngestionIdempotencyService:
             select(IngestionRun).where(IngestionRun.run_id == run_id).with_for_update()
         ).first()
         if existing is None:
-            return self.start_run(
-                run_id=run_id,
-                job_type=job_type,
-                provider=provider,
-                target_scope=target_scope,
-                input_hash=input_hash,
-            )
+            try:
+                return self.start_run(
+                    run_id=run_id,
+                    job_type=job_type,
+                    provider=provider,
+                    target_scope=target_scope,
+                    input_hash=input_hash,
+                )
+            except IntegrityError:
+                self.session.rollback()
+                existing = self.session.scalars(
+                    select(IngestionRun)
+                    .where(IngestionRun.run_id == run_id)
+                    .with_for_update()
+                ).first()
+                if existing is None:
+                    raise
 
         if existing.status == self.SUCCEEDED_STATUS and existing.input_hash == input_hash:
             return existing
@@ -99,6 +110,19 @@ class IngestionIdempotencyService:
         self.session.commit()
         self.session.refresh(existing)
         return existing
+
+    def mark_failed_by_run_id(
+        self,
+        *,
+        run_id: str,
+        error_summary: dict[str, Any],
+    ) -> IngestionRun:
+        run = self.session.scalars(
+            select(IngestionRun).where(IngestionRun.run_id == run_id)
+        ).first()
+        if run is None:
+            raise ValueError(f"ingestion_run_not_found:{run_id}")
+        return self.mark_failed(run=run, error_summary=error_summary)
 
     def mark_succeeded(
         self,

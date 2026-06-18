@@ -249,8 +249,9 @@ class ProviderIngestionService:
                 error_summary=completed.error_summary,
             )
         except Exception as exc:
-            failed = self.idempotency.mark_failed(
-                run=run,
+            self.session.rollback()
+            failed = self.idempotency.mark_failed_by_run_id(
+                run_id=run_id,
                 error_summary={"code": exc.__class__.__name__, "message": str(exc)},
             )
             return TickerIngestionResult(
