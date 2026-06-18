@@ -39,6 +39,8 @@ pathlib.Path(sys.argv[2]).write_text("\n".join(lambda_dependencies) + "\n")' \
   --requirement "${REQUIREMENTS_FILE}"
 
 cp -R "${API_DIR}/app" "${BUILD_DIR}/app"
+cp -R "${API_DIR}/migrations" "${BUILD_DIR}/migrations"
+cp "${API_DIR}/alembic.ini" "${BUILD_DIR}/alembic.ini"
 
 find "${BUILD_DIR}" -type d -name "__pycache__" -prune -exec rm -rf {} +
 

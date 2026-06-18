@@ -77,6 +77,7 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    - `cognito_callback_urls`
    - `cognito_logout_urls`
    - `cognito_hosted_ui_domain_prefix`
+   - `amplify_cognito_redirect_uri`
 
    For the first backend-only deployment, keep `enable_amplify = false`. Enable
    it only after the target GitHub organization approves the Amplify GitHub App.
@@ -92,10 +93,11 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    For `ap-northeast-2`, install the GitHub App from:
    `https://github.com/apps/aws-amplify-ap-northeast-2/installations/new`
 
-5. Initialize and validate Terraform. For the current dev workflow, Terraform
-   uses `infra/terraform/backend.tf`, which points at the dev S3 state backend.
-   If you are preparing another environment, update the backend bucket/key first
-   and follow `docs/engineering/DEPLOYMENT_BOOTSTRAP.md`.
+5. Initialize and validate Terraform. For a new AWS account, first run the
+   bootstrap flow in `docs/engineering/NEW_AWS_BOOTSTRAP.md`, then replace the
+   placeholder bucket in `infra/terraform/backend.tf` with the generated state
+   bucket. If you are preparing another environment, update the backend
+   bucket/key first and follow `docs/engineering/DEPLOYMENT_BOOTSTRAP.md`.
 
    ```bash
    cd infra/terraform
@@ -119,11 +121,11 @@ Terraform backend settings are not normal variables. They are read during
 `terraform init`, so the selected state bucket and key must be reviewed before
 planning or applying.
 
-Current dev backend:
+Backend template:
 
 | Setting | Value |
 | --- | --- |
-| Bucket | `stockbrief-terraform-state-420615923610-ap-northeast-2` |
+| Bucket | `stockbrief-terraform-state-<account-id>-ap-northeast-2` |
 | Key | `stockbrief/dev/terraform.tfstate` |
 | Region | `ap-northeast-2` |
 | Lock table | `stockbrief-terraform-locks` |
@@ -210,18 +212,33 @@ NEXT_PUBLIC_COGNITO_REDIRECT_URI
 
 For Terraform-created Amplify apps, AWS requires the Amplify GitHub App to be installed and a GitHub access token to be supplied during app creation. Pass it through `TF_VAR_amplify_access_token`; do not commit it.
 
-## RDS Proxy
+Amplify Hosted UI callback setup is intentionally two-step:
 
-The RDS module creates PostgreSQL when `db_subnet_ids` are provided. The `rds_proxy` module then creates:
+1. Enable Amplify and apply once to create the app and read
+   `amplify_default_domain`.
+2. Add the branch URL, for example
+   `https://main.<amplify_default_domain>/auth/callback`, to
+   `cognito_callback_urls`, add the matching account URL to
+   `cognito_logout_urls`, set `amplify_cognito_redirect_uri` to the hosted
+   callback URL, and apply again.
+
+## RDS And RDS Proxy
+
+The RDS module creates PostgreSQL when `db_subnet_ids` are provided. RDS Proxy is
+controlled by `enable_rds_proxy`. Keep it `false` for the first low-cost dev
+bootstrap, then enable it when Lambda concurrency requires connection pooling.
+
+When `enable_rds_proxy = true`, the `rds_proxy` module creates:
 
 - `aws_db_proxy`
 - `aws_db_proxy_default_target_group`
 - `aws_db_proxy_target`
 
-RDS Proxy uses the RDS-managed master user secret when an RDS instance exists. Lambda receives:
+RDS Proxy uses the RDS-managed master user secret when an RDS instance exists.
+Lambda receives:
 
 - `DATABASE_SECRET_ARN`: secret containing either `DATABASE_URL` or RDS `username`/`password`
-- `DATABASE_HOST`: RDS Proxy endpoint
+- `DATABASE_HOST`: RDS Proxy endpoint when enabled, otherwise the RDS endpoint
 - `DATABASE_PORT`
 - `DATABASE_NAME`
 - `DATABASE_POOL_SIZE`: SQLAlchemy pool size, default `5`
@@ -229,7 +246,9 @@ RDS Proxy uses the RDS-managed master user secret when an RDS instance exists. L
 - `DATABASE_POOL_RECYCLE_SECONDS`: idle connection recycle window, default `1800`
 - `DATABASE_POOL_TIMEOUT_SECONDS`: checkout timeout, default `30`
 
-At runtime the backend uses `DATABASE_URL` directly when present in the secret. Otherwise, it builds a PostgreSQL URL from `DATABASE_HOST` plus the secret's `username` and `password`.
+At runtime the backend uses `DATABASE_URL` directly when present in the secret.
+Otherwise, it builds a PostgreSQL URL from `DATABASE_HOST` plus the secret's
+`username` and `password`.
 
 ## AgentCore Runtime
 
@@ -382,11 +401,11 @@ The `dev` GitHub Environment uses a custom deployment branch policy that allows
 only the `main` branch. Keep that branch policy aligned with the IAM trust
 policy whenever the workflow branch or environment name changes.
 
-Bootstrap resources:
+Bootstrap resources are generated per AWS account:
 
 | Resource | Name |
 | --- | --- |
-| Terraform state bucket | `stockbrief-terraform-state-420615923610-ap-northeast-2` |
+| Terraform state bucket | `stockbrief-terraform-state-<account-id>-ap-northeast-2` |
 | Terraform lock table | `stockbrief-terraform-locks` |
 | GitHub OIDC provider | `token.actions.githubusercontent.com` |
 | GitHub deploy role | `stockbrief-dev-github-actions-deploy` |
@@ -395,7 +414,7 @@ Required GitHub repository variables:
 
 | Variable | Value |
 | --- | --- |
-| `AWS_DEV_DEPLOY_ROLE_ARN` | `arn:aws:iam::420615923610:role/stockbrief-dev-github-actions-deploy` |
+| `AWS_DEV_DEPLOY_ROLE_ARN` | Deploy role ARN printed by the bootstrap script |
 | `OPERATIONAL_ALARM_EMAILS_JSON` | JSON list of alarm recipient emails |
 
 The workflow builds `dist/stockbrief-api-lambda.zip`, initializes Terraform with

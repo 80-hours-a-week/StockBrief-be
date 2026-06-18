@@ -8,15 +8,25 @@ output "amplify_app_id" {
   value       = try(module.amplify[0].app_id, "")
 }
 
+output "amplify_default_domain" {
+  description = "Amplify default domain for the web app."
+  value       = try(module.amplify[0].default_domain, "")
+}
+
 output "database_secret_arn" {
-  description = "Secrets Manager ARN for database connection material."
-  value       = module.secrets.database_secret_arn
+  description = "Secrets Manager ARN used by Lambda for database connection material."
+  value       = module.rds.db_secret_arn
   sensitive   = true
 }
 
 output "rds_proxy_endpoint" {
-  description = "RDS Proxy endpoint used by Lambda when RDS is provisioned."
+  description = "RDS Proxy endpoint used by Lambda when enable_rds_proxy is true."
   value       = module.rds_proxy.proxy_endpoint
+}
+
+output "rds_endpoint" {
+  description = "RDS endpoint used by Lambda when RDS Proxy is disabled."
+  value       = module.rds.db_endpoint
 }
 
 output "external_api_secret_arn" {
@@ -38,6 +48,13 @@ output "cognito_app_client_id" {
 output "cognito_issuer" {
   description = "JWT issuer used by API Gateway HTTP API authorizer."
   value       = module.cognito.issuer
+}
+
+output "cognito_hosted_ui_domain" {
+  description = "Cognito Hosted UI domain for the Next.js frontend."
+  value = module.cognito.hosted_ui_domain == "" ? "" : (
+    "https://${module.cognito.hosted_ui_domain}.auth.${var.aws_region}.amazoncognito.com"
+  )
 }
 
 output "agentcore_runtime_arn" {

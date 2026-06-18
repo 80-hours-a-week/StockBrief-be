@@ -76,15 +76,15 @@ resource "aws_security_group" "rds" {
   count = local.managed_networking_enabled ? 1 : 0
 
   name        = "${local.name_prefix}-rds-sg"
-  description = "RDS PostgreSQL access from StockBrief RDS Proxy"
+  description = "RDS PostgreSQL access from StockBrief API"
   vpc_id      = var.vpc_id
 
   ingress {
-    description     = "PostgreSQL from RDS Proxy"
+    description     = var.enable_rds_proxy ? "PostgreSQL from RDS Proxy" : "PostgreSQL from Lambda"
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.rds_proxy[0].id]
+    security_groups = [var.enable_rds_proxy ? aws_security_group.rds_proxy[0].id : aws_security_group.lambda[0].id]
   }
 }
 
@@ -143,6 +143,7 @@ module "rds" {
 module "rds_proxy" {
   source = "./modules/rds_proxy"
 
+  enabled                = var.enable_rds_proxy
   name_prefix            = local.name_prefix
   db_instance_identifier = module.rds.db_instance_identifier
   subnet_ids             = var.db_subnet_ids
@@ -175,14 +176,15 @@ module "api_lambda" {
   memory_mb                 = var.api_lambda_memory_mb
   lambda_subnet_ids         = var.lambda_subnet_ids
   lambda_security_group_ids = local.effective_lambda_security_group_ids
-  database_secret_arn       = module.secrets.database_secret_arn
+  database_secret_arn       = module.rds.db_secret_arn
   external_api_secret_arn   = module.secrets.external_api_secret_arn
   log_group_name            = module.cloudwatch.api_lambda_log_group_name
   api_gateway_log_group_arn = module.cloudwatch.api_gateway_log_group_arn
-  database_host             = module.rds_proxy.proxy_endpoint
+  database_host             = var.enable_rds_proxy ? module.rds_proxy.proxy_endpoint : module.rds.db_endpoint
   database_port             = 5432
   database_name             = var.db_name
   agentcore_runtime_arn     = module.agentcore_runtime.runtime_arn
+  jwt_authorizer_enabled    = true
   jwt_authorizer_issuer     = module.cognito.issuer
   jwt_authorizer_audience   = [module.cognito.app_client_id]
   environment_variables = {
@@ -212,5 +214,5 @@ module "amplify" {
   cognito_user_pool_id     = module.cognito.user_pool_id
   cognito_app_client_id    = module.cognito.app_client_id
   cognito_hosted_ui_domain = module.cognito.hosted_ui_domain == "" ? "" : "${module.cognito.hosted_ui_domain}.auth.${var.aws_region}.amazoncognito.com"
-  cognito_redirect_uri     = var.cognito_callback_urls[0]
+  cognito_redirect_uri     = var.amplify_cognito_redirect_uri == "" ? var.cognito_callback_urls[0] : var.amplify_cognito_redirect_uri
 }

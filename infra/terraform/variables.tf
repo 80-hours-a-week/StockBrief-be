@@ -76,6 +76,12 @@ variable "amplify_branch_name" {
   default     = "main"
 }
 
+variable "amplify_cognito_redirect_uri" {
+  description = "Optional Cognito redirect URI exposed to the Amplify frontend. Leave empty to use the first cognito_callback_urls entry."
+  type        = string
+  default     = ""
+}
+
 variable "cognito_callback_urls" {
   description = "Allowed Cognito Hosted UI callback URLs. The first value is passed to Amplify as NEXT_PUBLIC_COGNITO_REDIRECT_URI."
   type        = list(string)
@@ -152,6 +158,12 @@ variable "rds_proxy_security_group_ids" {
   description = "Security group IDs attached to RDS Proxy. If empty and vpc_id is set, Terraform creates a dev proxy security group."
   type        = list(string)
   default     = []
+}
+
+variable "enable_rds_proxy" {
+  description = "Whether to create RDS Proxy. Disable for the first low-cost dev bootstrap; enable when Lambda concurrency requires connection pooling."
+  type        = bool
+  default     = false
 }
 
 variable "lambda_subnet_ids" {

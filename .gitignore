@@ -48,3 +48,10 @@ temp/
 .cache/
 build/
 dist/
+
+# Internal AI handoff / cloud planning docs
+# These may contain AWS account IDs and internal resource identifiers.
+# Keep these local only — do not commit or PR.
+docs/engineering/CODEX_HANDOFF_*.md
+docs/engineering/CLOUD_*_HANDOFF.md
+docs/engineering/CLOUD_*_PLAN.md

@@ -2,6 +2,12 @@ variable "name_prefix" {
   type = string
 }
 
+variable "enabled" {
+  description = "Whether to create RDS Proxy resources."
+  type        = bool
+  default     = true
+}
+
 variable "db_instance_identifier" {
   type = string
 }

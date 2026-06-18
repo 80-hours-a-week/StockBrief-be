@@ -73,6 +73,12 @@ variable "jwt_authorizer_issuer" {
   default = ""
 }
 
+variable "jwt_authorizer_enabled" {
+  description = "Whether to create the API Gateway JWT authorizer for protected routes."
+  type        = bool
+  default     = false
+}
+
 variable "jwt_authorizer_audience" {
   type    = list(string)
   default = []
