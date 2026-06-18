@@ -8,6 +8,11 @@ output "amplify_app_id" {
   value       = try(module.amplify[0].app_id, "")
 }
 
+output "amplify_default_domain" {
+  description = "Amplify default domain for the web app."
+  value       = try(module.amplify[0].default_domain, "")
+}
+
 output "database_secret_arn" {
   description = "Secrets Manager ARN used by Lambda for database connection material."
   value       = module.rds.db_secret_arn

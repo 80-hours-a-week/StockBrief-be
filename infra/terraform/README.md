@@ -77,6 +77,7 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    - `cognito_callback_urls`
    - `cognito_logout_urls`
    - `cognito_hosted_ui_domain_prefix`
+   - `amplify_cognito_redirect_uri`
 
    For the first backend-only deployment, keep `enable_amplify = false`. Enable
    it only after the target GitHub organization approves the Amplify GitHub App.
@@ -210,6 +211,16 @@ NEXT_PUBLIC_COGNITO_REDIRECT_URI
 `NEXT_PUBLIC_API_BASE_URL` is populated from the API Gateway output in Terraform. For local development, keep using `.env.example`.
 
 For Terraform-created Amplify apps, AWS requires the Amplify GitHub App to be installed and a GitHub access token to be supplied during app creation. Pass it through `TF_VAR_amplify_access_token`; do not commit it.
+
+Amplify Hosted UI callback setup is intentionally two-step:
+
+1. Enable Amplify and apply once to create the app and read
+   `amplify_default_domain`.
+2. Add the branch URL, for example
+   `https://main.<amplify_default_domain>/auth/callback`, to
+   `cognito_callback_urls`, add the matching account URL to
+   `cognito_logout_urls`, set `amplify_cognito_redirect_uri` to the hosted
+   callback URL, and apply again.
 
 ## RDS And RDS Proxy
 

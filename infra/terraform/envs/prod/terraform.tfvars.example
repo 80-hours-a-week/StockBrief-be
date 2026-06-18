@@ -7,6 +7,8 @@ cors_allowed_origins    = "https://stockbrief.example.com"
 enable_amplify         = false
 amplify_repository_url = "https://github.com/example/StockBrief-fe"
 amplify_branch_name    = "main"
+# After Amplify default_domain is known, set this to the hosted callback URL.
+amplify_cognito_redirect_uri = ""
 # Provide a real token via TF_VAR_amplify_access_token, not in this file.
 
 cognito_callback_urls           = ["https://stockbrief.example.com/auth/callback"]

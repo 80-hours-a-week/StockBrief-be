@@ -95,6 +95,18 @@ def test_api_gateway_stage_has_access_logs() -> None:
     assert "jwt_authorizer_enabled    = true" in root_main_tf
 
 
+def test_amplify_hosted_callback_can_be_overridden_after_domain_creation() -> None:
+    root_main_tf = _read("main.tf")
+    outputs_tf = _read("outputs.tf")
+    variables_tf = _read("variables.tf")
+    dev_tfvars = _read("envs/dev/terraform.tfvars.example")
+
+    assert 'variable "amplify_cognito_redirect_uri"' in variables_tf
+    assert "amplify_cognito_redirect_uri" in dev_tfvars
+    assert "amplify_cognito_redirect_uri == \"\" ? var.cognito_callback_urls[0]" in root_main_tf
+    assert 'output "amplify_default_domain"' in outputs_tf
+
+
 def test_api_lambda_role_has_vpc_and_agentcore_invoke_permissions() -> None:
     api_lambda_tf = _read("modules/api_lambda/main.tf")
 

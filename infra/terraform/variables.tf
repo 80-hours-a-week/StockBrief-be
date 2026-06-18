@@ -76,6 +76,12 @@ variable "amplify_branch_name" {
   default     = "main"
 }
 
+variable "amplify_cognito_redirect_uri" {
+  description = "Optional Cognito redirect URI exposed to the Amplify frontend. Leave empty to use the first cognito_callback_urls entry."
+  type        = string
+  default     = ""
+}
+
 variable "cognito_callback_urls" {
   description = "Allowed Cognito Hosted UI callback URLs. The first value is passed to Amplify as NEXT_PUBLIC_COGNITO_REDIRECT_URI."
   type        = list(string)

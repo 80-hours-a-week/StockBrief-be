@@ -214,5 +214,5 @@ module "amplify" {
   cognito_user_pool_id     = module.cognito.user_pool_id
   cognito_app_client_id    = module.cognito.app_client_id
   cognito_hosted_ui_domain = module.cognito.hosted_ui_domain == "" ? "" : "${module.cognito.hosted_ui_domain}.auth.${var.aws_region}.amazoncognito.com"
-  cognito_redirect_uri     = var.cognito_callback_urls[0]
+  cognito_redirect_uri     = var.amplify_cognito_redirect_uri == "" ? var.cognito_callback_urls[0] : var.amplify_cognito_redirect_uri
 }
