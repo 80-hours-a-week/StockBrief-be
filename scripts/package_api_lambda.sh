@@ -43,10 +43,11 @@ cp -R "${API_DIR}/migrations" "${BUILD_DIR}/migrations"
 cp "${API_DIR}/alembic.ini" "${BUILD_DIR}/alembic.ini"
 
 find "${BUILD_DIR}" -type d -name "__pycache__" -prune -exec rm -rf {} +
+find "${BUILD_DIR}" -exec touch -t 198001010000 {} +
 
 (
   cd "${BUILD_DIR}"
-  zip -qr "${ZIP_PATH}" .
+  find . -type f | LC_ALL=C sort | zip -X -q "${ZIP_PATH}" -@
 )
 
 echo "Packaged ${ZIP_PATH}"
