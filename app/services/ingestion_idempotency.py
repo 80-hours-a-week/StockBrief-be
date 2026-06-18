@@ -60,6 +60,40 @@ class IngestionIdempotencyService:
         self.session.refresh(run)
         return run
 
+    def start_or_restart_run(
+        self,
+        *,
+        run_id: str,
+        job_type: str,
+        provider: str,
+        target_scope: dict[str, Any],
+        input_hash: str,
+    ) -> IngestionRun:
+        existing = self.session.scalars(
+            select(IngestionRun).where(IngestionRun.run_id == run_id)
+        ).first()
+        if existing is None:
+            return self.start_run(
+                run_id=run_id,
+                job_type=job_type,
+                provider=provider,
+                target_scope=target_scope,
+                input_hash=input_hash,
+            )
+
+        existing.job_type = job_type
+        existing.provider = provider
+        existing.target_scope = target_scope
+        existing.status = "started"
+        existing.input_hash = input_hash
+        existing.started_at = datetime.now(timezone.utc)
+        existing.completed_at = None
+        existing.result_counts = {}
+        existing.error_summary = None
+        self.session.commit()
+        self.session.refresh(existing)
+        return existing
+
     def mark_succeeded(
         self,
         *,

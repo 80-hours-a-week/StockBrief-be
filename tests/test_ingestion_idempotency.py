@@ -95,6 +95,33 @@ def test_duplicate_detection_only_counts_succeeded_runs(db_session: Session) -> 
     assert service.is_duplicate(run_id="other", input_hash=input_hash) is True
 
 
+def test_failed_run_can_be_restarted_with_same_run_id(db_session: Session) -> None:
+    service = IngestionIdempotencyService(db_session)
+    run = service.start_run(
+        run_id="opendart-20260618-005930",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930"},
+        input_hash="old-hash",
+    )
+    service.mark_failed(run=run, error_summary={"code": "provider_timeout"})
+
+    restarted = service.start_or_restart_run(
+        run_id="opendart-20260618-005930",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930", "source_date": "2026-06-18"},
+        input_hash="new-hash",
+    )
+
+    assert restarted.id == run.id
+    assert restarted.status == "started"
+    assert restarted.input_hash == "new-hash"
+    assert restarted.completed_at is None
+    assert restarted.error_summary is None
+    assert restarted.result_counts == {}
+
+
 def test_status_transitions_record_completion_payloads(db_session: Session) -> None:
     service = IngestionIdempotencyService(db_session)
     run = service.start_run(
