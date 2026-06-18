@@ -134,6 +134,7 @@ def test_ingestion_pipeline_resources_are_wired_with_scheduler_disabled_by_defau
     assert "local.ingestion_scheduler_enabled" in ingestion_tf
     assert "length(var.ingestion_schedule_tickers) > 0" in ingestion_tf
     assert "stockbrief_operation = \"ingest_provider_batch\"" in ingestion_tf
+    assert "raise_on_failure     = true" in ingestion_tf
     assert "INGESTION_RAW_BUCKET" in root_main_tf
     assert "INGESTION_RAW_BUCKET" in api_lambda_tf
     assert "s3:PutObject" in api_lambda_tf

@@ -158,11 +158,13 @@ class ProviderIngestionService:
         }
 
     def _run_ticker(self, *, request: ProviderIngestionRequest, ticker: str) -> TickerIngestionResult:
-        run_id = request.run_id or build_run_id(
+        run_id = build_run_id(
             provider=request.provider,
             source_date=request.source_date,
             ticker=ticker,
         )
+        if request.run_id:
+            run_id = f"{request.run_id}-{ticker}"
         input_hash = build_request_hash(
             provider=request.provider,
             ticker=ticker,
@@ -172,24 +174,43 @@ class ProviderIngestionService:
                 "news_display": request.news_display,
             },
         )
-        if self.idempotency.is_duplicate(run_id=run_id, input_hash=input_hash):
+
+        try:
+            run = self.idempotency.start_or_restart_run(
+                run_id=run_id,
+                job_type=_job_type(request.provider),
+                provider=request.provider,
+                target_scope={
+                    "ticker": ticker,
+                    "source_date": request.source_date,
+                },
+                input_hash=input_hash,
+            )
+        except ValueError as exc:
+            return TickerIngestionResult(
+                ticker=ticker,
+                run_id=run_id,
+                status="failed",
+                result_counts={},
+                error_summary={"code": exc.__class__.__name__, "message": str(exc)},
+            )
+        except Exception as exc:
+            self.session.rollback()
+            return TickerIngestionResult(
+                ticker=ticker,
+                run_id=run_id,
+                status="failed",
+                result_counts={},
+                error_summary={"code": exc.__class__.__name__, "message": str(exc)},
+            )
+
+        if run.status == self.idempotency.SUCCEEDED_STATUS:
             return TickerIngestionResult(
                 ticker=ticker,
                 run_id=run_id,
                 status="replayed",
                 result_counts={"inserted": 0, "updated": 0, "skipped": 1},
             )
-
-        run = self.idempotency.start_or_restart_run(
-            run_id=run_id,
-            job_type=_job_type(request.provider),
-            provider=request.provider,
-            target_scope={
-                "ticker": ticker,
-                "source_date": request.source_date,
-            },
-            input_hash=input_hash,
-        )
 
         try:
             external_result = self._fetch_provider_result(request=request, ticker=ticker)
@@ -343,7 +364,7 @@ class ProviderIngestionService:
                     )
                 )
                 counts["inserted"] += 1
-        self.session.commit()
+        self.session.flush()
         return counts
 
     def _persist_news(
@@ -406,14 +427,17 @@ class ProviderIngestionService:
                     )
                 )
                 counts["inserted"] += 1
-        self.session.commit()
+        self.session.flush()
         return counts
 
 
 def handle_ingestion_event(event: dict[str, object]) -> dict[str, Any]:
     request = ProviderIngestionRequest.from_event(event)
     with get_session_factory()() as session:
-        return ProviderIngestionService(session).run_provider_batch(request)
+        result = ProviderIngestionService(session).run_provider_batch(request)
+    if event.get("raise_on_failure") is True and result.get("ok") is False:
+        raise RuntimeError(f"ingestion_batch_failed:{result.get('provider')}")
+    return result
 
 
 def hydrate_external_api_settings(settings: Settings) -> Settings:

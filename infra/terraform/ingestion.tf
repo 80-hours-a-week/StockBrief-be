@@ -139,6 +139,7 @@ resource "aws_scheduler_schedule" "provider_ingestion" {
       stockbrief_operation = "ingest_provider_batch"
       provider             = var.ingestion_schedule_provider
       tickers              = var.ingestion_schedule_tickers
+      raise_on_failure     = true
     })
   }
 }

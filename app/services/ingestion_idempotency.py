@@ -15,6 +15,7 @@ class IngestionIdempotencyService:
     """Track ingestion runs so provider jobs can be safely retried."""
 
     SUCCEEDED_STATUS = "succeeded"
+    RESTARTABLE_STATUSES = {"failed", "partial_failed"}
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -70,7 +71,7 @@ class IngestionIdempotencyService:
         input_hash: str,
     ) -> IngestionRun:
         existing = self.session.scalars(
-            select(IngestionRun).where(IngestionRun.run_id == run_id)
+            select(IngestionRun).where(IngestionRun.run_id == run_id).with_for_update()
         ).first()
         if existing is None:
             return self.start_run(
@@ -80,6 +81,11 @@ class IngestionIdempotencyService:
                 target_scope=target_scope,
                 input_hash=input_hash,
             )
+
+        if existing.status == self.SUCCEEDED_STATUS and existing.input_hash == input_hash:
+            return existing
+        if existing.status not in self.RESTARTABLE_STATUSES:
+            raise ValueError(f"ingestion_run_already_active:{run_id}")
 
         existing.job_type = job_type
         existing.provider = provider

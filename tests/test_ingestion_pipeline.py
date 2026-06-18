@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,7 @@ from app.services.ingestion import (
     build_request_hash,
     build_run_id,
     hydrate_external_api_settings,
+    handle_ingestion_event,
 )
 
 
@@ -172,6 +174,64 @@ def test_opendart_ingestion_upserts_disclosures_and_sources(
     assert run.status == "succeeded"
 
 
+def test_explicit_run_id_is_scoped_per_ticker_in_batch(
+    monkeypatch,
+    seeded_session: Session,
+) -> None:
+    def fake_list_disclosures(self, *, ticker: str, corp_code=None, page_count: int = 10):
+        return ExternalApiResult(
+            provider=OPENDART_PROVIDER,
+            endpoint="/list.json",
+            cache_key=f"disclosures:{ticker}:mock:{page_count}",
+            data_status="available",
+            status_code=200,
+            payload={
+                "list": [
+                    {
+                        "rcept_no": f"20260618{ticker}",
+                        "report_nm": "반기보고서",
+                        "rcept_dt": "20260618",
+                        "rm": "정기공시",
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(
+        "app.services.ingestion.OpenDartClient.list_disclosures",
+        fake_list_disclosures,
+    )
+    service = ProviderIngestionService(
+        seeded_session,
+        settings=Settings(OPENDART_API_KEY="test-key"),
+        archiver=NoopPayloadArchiver(),
+    )
+
+    result = service.run_provider_batch(
+        ProviderIngestionRequest(
+            provider=OPENDART_PROVIDER,
+            tickers=["005930", "000660"],
+            source_date="2026-06-18",
+            run_id="manual-run",
+        )
+    )
+
+    assert result["ok"] is True
+    assert [item["run_id"] for item in result["results"]] == [
+        "manual-run-005930",
+        "manual-run-000660",
+    ]
+
+    runs = seeded_session.scalars(
+        select(IngestionRun)
+        .where(IngestionRun.run_id.in_(["manual-run-005930", "manual-run-000660"]))
+        .order_by(IngestionRun.run_id)
+    ).all()
+    assert len(runs) == 2
+    assert {run.target_scope["ticker"] for run in runs} == {"005930", "000660"}
+    assert {run.status for run in runs} == {"succeeded"}
+
+
 def test_naver_ingestion_upserts_news_and_source_documents(
     monkeypatch,
     seeded_session: Session,
@@ -274,6 +334,45 @@ def test_provider_fallback_marks_partial_failed_without_persisting_rows(
         "skipped": 1,
     }
     assert result["results"][0]["error_summary"]["code"] == "provider_fallback"
+
+
+def test_handle_ingestion_event_raises_for_scheduled_failure(monkeypatch) -> None:
+    class FakeSessionFactory:
+        def __call__(self):
+            return self
+
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class FakeProviderIngestionService:
+        def __init__(self, session):
+            self.session = session
+
+        def run_provider_batch(self, request):
+            return {
+                "ok": False,
+                "provider": request.provider,
+                "results": [{"status": "partial_failed"}],
+            }
+
+    monkeypatch.setattr("app.services.ingestion.get_session_factory", lambda: FakeSessionFactory())
+    monkeypatch.setattr(
+        "app.services.ingestion.ProviderIngestionService",
+        FakeProviderIngestionService,
+    )
+
+    with pytest.raises(RuntimeError, match="ingestion_batch_failed"):
+        handle_ingestion_event(
+            {
+                "stockbrief_operation": "ingest_provider_batch",
+                "provider": OPENDART_PROVIDER,
+                "tickers": ["005930"],
+                "raise_on_failure": True,
+            }
+        )
 
 
 def test_hydrate_external_api_settings_reads_external_secret(monkeypatch) -> None:
