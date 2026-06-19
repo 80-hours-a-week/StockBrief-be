@@ -67,3 +67,21 @@ def test_terraform_readme_documents_multi_repository_layout() -> None:
     assert "StockBrief-fe" in terraform_readme
     assert "apps/web" not in terraform_readme
     assert "services/api" not in terraform_readme
+
+
+def test_deployment_bootstrap_documents_dev_cost_pause_and_resume() -> None:
+    deployment_doc = (
+        REPOSITORY_ROOT / "docs/engineering/DEPLOYMENT_BOOTSTRAP.md"
+    ).read_text(encoding="utf-8")
+
+    assert "## Dev Cost Pause And Resume Runbook" in deployment_doc
+    assert "aws rds stop-db-instance" in deployment_doc
+    assert "aws rds start-db-instance" in deployment_doc
+    assert "aws rds wait db-instance-available" in deployment_doc
+    assert "aws lambda put-function-concurrency" in deployment_doc
+    assert "--reserved-concurrent-executions 0" in deployment_doc
+    assert "aws lambda delete-function-concurrency" in deployment_doc
+    assert "enable_ingestion_scheduler = false" in deployment_doc
+    assert "terraform plan -var-file=envs/dev/deploy.auto.tfvars.json" in deployment_doc
+    assert "Do not delete Terraform-managed resources from the AWS console" in deployment_doc
+    assert "Do not use `terraform apply` as a blind repair step" in deployment_doc
