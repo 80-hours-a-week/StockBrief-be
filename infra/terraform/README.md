@@ -416,12 +416,13 @@ tokens, or copied secret payloads.
    rm /tmp/stockbrief-external-api-secret.json
    ```
 
-6. Run one manual Lambda ingestion per provider before enabling any scheduler:
+6. Run one manual Lambda ingestion per provider before enabling any scheduler.
+   Replace `YYYY-MM-DD` with the business date you want to verify:
 
    ```bash
    aws lambda invoke \
      --function-name stockbrief-dev-api \
-     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"OpenDART","tickers":["005930"],"source_date":"2026-06-18"}' \
+     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"OpenDART","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
      --cli-binary-format raw-in-base64-out \
      /tmp/stockbrief-opendart-ingest-response.json \
      --profile stockbrief-dev \
@@ -429,7 +430,7 @@ tokens, or copied secret payloads.
 
    aws lambda invoke \
      --function-name stockbrief-dev-api \
-     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"NAVER_NEWS","tickers":["005930"],"source_date":"2026-06-18"}' \
+     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"NAVER_NEWS","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
      --cli-binary-format raw-in-base64-out \
      /tmp/stockbrief-naver-ingest-response.json \
      --profile stockbrief-dev \

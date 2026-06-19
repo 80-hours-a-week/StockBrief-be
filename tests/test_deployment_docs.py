@@ -84,5 +84,7 @@ def test_terraform_readme_documents_external_api_secret_update_runbook() -> None
     assert "aws lambda invoke" in terraform_readme
     assert '"provider":"OpenDART"' in terraform_readme
     assert '"provider":"NAVER_NEWS"' in terraform_readme
+    assert '"source_date":"YYYY-MM-DD"' in terraform_readme
+    assert "Replace `YYYY-MM-DD` with the business date you want to verify" in terraform_readme
     assert "missing_api_key" in terraform_readme
     assert "outbound internet egress" in terraform_readme
