@@ -78,6 +78,8 @@ def test_deployment_bootstrap_documents_dev_cost_pause_and_resume() -> None:
     assert "aws rds stop-db-instance" in deployment_doc
     assert "aws rds start-db-instance" in deployment_doc
     assert "aws rds wait db-instance-available" in deployment_doc
+    assert "RDS stop is a short-term pause control" in deployment_doc
+    assert "stop it again if AWS has returned it to `available`" in deployment_doc
     assert "aws lambda put-function-concurrency" in deployment_doc
     assert "--reserved-concurrent-executions 0" in deployment_doc
     assert "aws lambda delete-function-concurrency" in deployment_doc

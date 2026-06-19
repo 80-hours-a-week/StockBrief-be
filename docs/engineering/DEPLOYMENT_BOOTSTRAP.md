@@ -205,6 +205,10 @@ Pause checklist:
     --region ap-northeast-2
   ```
 
+  RDS stop is a short-term pause control, not a permanent shutdown state. For a
+  multi-day pause, re-check the DB status before the next billing window and
+  stop it again if AWS has returned it to `available`.
+
 - Block accidental API Lambda execution while the database is stopped:
 
   ```bash
