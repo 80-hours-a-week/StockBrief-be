@@ -20,6 +20,26 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    duplicate_rows = op.get_bind().execute(
+        sa.text(
+            """
+            select input_hash, count(*) as duplicate_count
+            from ingestion_runs
+            where status in ('started', 'succeeded')
+            group by input_hash
+            having count(*) > 1
+            limit 5
+            """
+        )
+    ).fetchall()
+    if duplicate_rows:
+        sample = ", ".join(f"{row[0]}:{row[1]}" for row in duplicate_rows)
+        raise RuntimeError(
+            "Cannot create uq_ingestion_runs_active_input_hash while duplicate "
+            "started/succeeded ingestion_runs.input_hash rows exist. "
+            f"Resolve duplicates before migration. Sample input_hash counts: {sample}"
+        )
+
     op.create_index(
         "uq_ingestion_runs_active_input_hash",
         "ingestion_runs",

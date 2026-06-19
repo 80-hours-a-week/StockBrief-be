@@ -319,6 +319,21 @@ Replay policy:
   concurrent first-run workers from creating multiple active ledger rows for the
   same normalized input.
 
+Before applying migration `0004_ingestion_input_hash_guard`, confirm that the
+target database has no existing duplicate active/succeeded input hashes:
+
+```sql
+select input_hash, count(*) as duplicate_count
+from ingestion_runs
+where status in ('started', 'succeeded')
+group by input_hash
+having count(*) > 1;
+```
+
+If this query returns rows, resolve the duplicate ledger rows before running the
+migration. The migration intentionally fails with an explicit message instead
+of creating the index over ambiguous existing data.
+
 | Field | Type | Required | Example | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | uuid | yes | `...` | Primary key. |
