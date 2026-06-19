@@ -307,6 +307,15 @@ Stores external API request logs without secrets.
 Stores ingestion execution state so provider jobs can be retried or replayed
 without duplicate writes.
 
+Replay policy:
+
+- `run_id` is unique and protects explicit reruns of the same ledger row.
+- `input_hash` is the normalized provider, ticker, source date, and request
+  parameter hash. A succeeded run with the same `input_hash` is replayed even
+  when a later request uses a different explicit `run_id`.
+- An active run with the same `input_hash` blocks another run until the first
+  run reaches a terminal status.
+
 | Field | Type | Required | Example | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | uuid | yes | `...` | Primary key. |

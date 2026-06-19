@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -144,6 +144,55 @@ def test_succeeded_run_replays_instead_of_restarting(db_session: Session) -> Non
     assert replayed.id == run.id
     assert replayed.status == "succeeded"
     assert replayed.result_counts == {"inserted": 1}
+
+
+def test_succeeded_run_replays_when_input_hash_matches_different_run_id(
+    db_session: Session,
+) -> None:
+    service = IngestionIdempotencyService(db_session)
+    run = service.start_run(
+        run_id="opendart-20260618-005930",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930"},
+        input_hash="same-hash",
+    )
+    service.mark_succeeded(run=run, result_counts={"inserted": 1})
+
+    replayed = service.start_or_restart_run(
+        run_id="manual-rerun-005930",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930"},
+        input_hash="same-hash",
+    )
+
+    assert replayed.id == run.id
+    assert replayed.run_id == "opendart-20260618-005930"
+    assert replayed.status == "succeeded"
+    assert len(db_session.scalars(select(IngestionRun)).all()) == 1
+
+
+def test_active_run_with_same_input_hash_blocks_different_run_id(
+    db_session: Session,
+) -> None:
+    service = IngestionIdempotencyService(db_session)
+    service.start_run(
+        run_id="opendart-20260618-005930",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930"},
+        input_hash="same-hash",
+    )
+
+    with pytest.raises(ValueError, match="ingestion_run_already_active:opendart-20260618-005930"):
+        service.start_or_restart_run(
+            run_id="manual-rerun-005930",
+            job_type="disclosure",
+            provider="OpenDART",
+            target_scope={"ticker": "005930"},
+            input_hash="same-hash",
+        )
 
 
 def test_active_run_cannot_be_restarted(db_session: Session) -> None:

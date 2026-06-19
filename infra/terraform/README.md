@@ -273,8 +273,11 @@ maintenance events:
 
 Supported providers are `OpenDART` and `NAVER_NEWS`. Each ticker run writes an
 `ingestion_runs` row before provider access, computes a stable request hash, and
-skips duplicate successful runs as `replayed`. Available provider responses are
-stored in RDS using these first baseline upsert keys:
+skips duplicate successful runs as `replayed`. The replay check uses the
+normalized `input_hash`, so the same provider/ticker/source date/request
+parameter set is replayed even if a later manual request uses a different
+explicit `run_id`. Available provider responses are stored in RDS using these
+first baseline upsert keys:
 
 - OpenDART disclosures: `provider + receipt_no`
 - NAVER news: `source_url`, with the source document keyed by `source_name + source_url_hash`
