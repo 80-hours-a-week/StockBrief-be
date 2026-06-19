@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
+from threading import Barrier, Lock, Thread
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -263,6 +264,69 @@ def test_insert_race_recovers_to_existing_active_run_guard(
             target_scope={"ticker": "005930"},
             input_hash="same-hash",
         )
+
+
+def test_concurrent_same_run_id_and_hash_converges_to_one_active_run(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    engine = create_engine(
+        f"sqlite+pysqlite:///{tmp_path / 'ingestion-race.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+
+    barrier = Barrier(2)
+    insert_lock = Lock()
+    results: list[str] = []
+    errors: list[str] = []
+
+    def worker() -> None:
+        with Session(engine) as session:
+            service = IngestionIdempotencyService(session)
+            original_start_run = service.start_run
+
+            def racing_start_run(**kwargs):
+                barrier.wait(timeout=3)
+                with insert_lock:
+                    existing = session.scalars(
+                        select(IngestionRun).where(
+                            IngestionRun.run_id == kwargs["run_id"]
+                        )
+                    ).first()
+                    if existing is None:
+                        return original_start_run(**kwargs)
+                raise IntegrityError("insert", {}, Exception("unique violation"))
+
+            monkeypatch.setattr(service, "start_run", racing_start_run)
+
+            try:
+                run = service.start_or_restart_run(
+                    run_id="opendart-20260618-005930",
+                    job_type="disclosure",
+                    provider="OpenDART",
+                    target_scope={"ticker": "005930"},
+                    input_hash="same-hash",
+                )
+                results.append(run.status)
+            except ValueError as exc:
+                errors.append(str(exc))
+
+    threads = [Thread(target=worker), Thread(target=worker)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert results == ["started"]
+    assert errors == ["ingestion_run_already_active:opendart-20260618-005930"]
+
+    with Session(engine) as session:
+        runs = session.scalars(select(IngestionRun)).all()
+        assert len(runs) == 1
+        assert runs[0].run_id == "opendart-20260618-005930"
+        assert runs[0].status == "started"
+        assert runs[0].input_hash == "same-hash"
 
 
 def test_status_transitions_record_completion_payloads(db_session: Session) -> None:
