@@ -259,6 +259,22 @@ Otherwise, it builds a PostgreSQL URL from `DATABASE_HOST` plus the secret's
 
 ## Provider Ingestion
 
+Before running a provider job or enabling the scheduler, call the readiness
+operation from the same Lambda maintenance handler:
+
+```json
+{
+  "stockbrief_operation": "check_ingestion_readiness"
+}
+```
+
+The readiness response reports whether `INGESTION_RAW_BUCKET`,
+`EXTERNAL_API_SECRET_ARN`, `OPENDART_API_KEY`, `NAVER_CLIENT_ID`, and
+`NAVER_CLIENT_SECRET` are configured. It reports presence only and does not
+return secret values. It also does not call external provider APIs, so outbound
+internet egress must still be verified separately before scheduled ingestion is
+enabled.
+
 The backend Lambda can run provider ingestion through the same handler used for
 maintenance events:
 
@@ -382,6 +398,86 @@ Non-secret runtime values remain Lambda or Amplify environment variables:
 - `NEXT_PUBLIC_COGNITO_APP_CLIENT_ID`
 - `NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN`
 - `NEXT_PUBLIC_COGNITO_REDIRECT_URI`
+
+### External API Credential Update Runbook
+
+Use this runbook after Terraform creates `stockbrief-dev/external-api` and
+before running live OpenDART or NAVER ingestion. Never commit real API keys,
+tokens, or copied secret payloads.
+
+1. Resolve the Terraform-managed external API secret ARN:
+
+   ```bash
+   cd infra/terraform
+   terraform output -raw external_api_secret_arn
+   ```
+
+2. Create a local temporary JSON payload outside the repository:
+
+   ```json
+   {
+     "OPENDART_API_KEY": "REPLACE_WITH_REAL_VALUE",
+     "NAVER_CLIENT_ID": "REPLACE_WITH_REAL_VALUE",
+     "NAVER_CLIENT_SECRET": "REPLACE_WITH_REAL_VALUE",
+     "KRX_DATA_PATH": ""
+   }
+   ```
+
+   Store it at a temporary path such as
+   `/tmp/stockbrief-external-api-secret.json`. Delete the file after the update.
+
+3. Update the current Secrets Manager value without printing the payload:
+
+   ```bash
+   aws secretsmanager update-secret \
+     --secret-id "$(terraform output -raw external_api_secret_arn)" \
+     --secret-string file:///tmp/stockbrief-external-api-secret.json \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+   ```
+
+4. Verify metadata only. Do not use `get-secret-value` in shared logs or PR
+   evidence because it prints secret material:
+
+   ```bash
+   aws secretsmanager describe-secret \
+     --secret-id "$(terraform output -raw external_api_secret_arn)" \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+   ```
+
+5. Delete the temporary payload file after the update:
+
+   ```bash
+   rm /tmp/stockbrief-external-api-secret.json
+   ```
+
+6. Run one manual Lambda ingestion per provider before enabling any scheduler.
+   Replace `YYYY-MM-DD` with the business date you want to verify:
+
+   ```bash
+   aws lambda invoke \
+     --function-name stockbrief-dev-api \
+     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"OpenDART","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
+     --cli-binary-format raw-in-base64-out \
+     /tmp/stockbrief-opendart-ingest-response.json \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+
+   aws lambda invoke \
+     --function-name stockbrief-dev-api \
+     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"NAVER_NEWS","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
+     --cli-binary-format raw-in-base64-out \
+     /tmp/stockbrief-naver-ingest-response.json \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+   ```
+
+7. Treat credentials as present only after the Lambda responses no longer report
+   `missing_api_key` for `OPENDART_API_KEY` or
+   `NAVER_CLIENT_ID/NAVER_CLIENT_SECRET`. Credential presence is necessary but
+   not sufficient for live ingestion; the Lambda private subnet must also have
+   outbound internet egress to reach OpenDART and NAVER.
 
 ## Cognito And API Gateway JWT Authorizer
 
