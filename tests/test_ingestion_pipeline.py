@@ -229,8 +229,30 @@ def test_explicit_run_id_is_scoped_per_ticker_in_batch(
         .order_by(IngestionRun.run_id)
     ).all()
     assert len(runs) == 2
-    assert {run.target_scope["ticker"] for run in runs} == {"005930", "000660"}
+    runs_by_ticker = {run.target_scope["ticker"]: run for run in runs}
+    assert set(runs_by_ticker) == {"005930", "000660"}
     assert {run.status for run in runs} == {"succeeded"}
+    assert runs_by_ticker["005930"].run_id == "manual-run-005930"
+    assert runs_by_ticker["000660"].run_id == "manual-run-000660"
+    assert runs_by_ticker["005930"].target_scope == {
+        "ticker": "005930",
+        "source_date": "2026-06-18",
+    }
+    assert runs_by_ticker["000660"].target_scope == {
+        "ticker": "000660",
+        "source_date": "2026-06-18",
+    }
+    assert runs_by_ticker["005930"].input_hash != runs_by_ticker["000660"].input_hash
+    assert runs_by_ticker["005930"].result_counts == {
+        "inserted": 1,
+        "updated": 0,
+        "skipped": 0,
+    }
+    assert runs_by_ticker["000660"].result_counts == {
+        "inserted": 1,
+        "updated": 0,
+        "skipped": 0,
+    }
 
 
 def test_naver_ingestion_upserts_news_and_source_documents(
