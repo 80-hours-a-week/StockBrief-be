@@ -453,7 +453,7 @@ def check_ingestion_readiness(settings: Settings | None = None) -> dict[str, Any
         except Exception as exc:
             secret_load_error = {
                 "code": exc.__class__.__name__,
-                "message": str(exc),
+                "message": "External API secret could not be loaded.",
             }
             issues.append(
                 {

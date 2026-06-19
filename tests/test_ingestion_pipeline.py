@@ -559,8 +559,12 @@ def test_check_ingestion_readiness_returns_secret_load_error(monkeypatch) -> Non
     assert result["checks"]["external_api_secret"] == {
         "configured": True,
         "loaded": False,
-        "error": {"code": "RuntimeError", "message": "secret unavailable"},
+        "error": {
+            "code": "RuntimeError",
+            "message": "External API secret could not be loaded.",
+        },
     }
+    assert "secret unavailable" not in str(result)
     assert {"code": "external_api_secret_load_failed", "field": "EXTERNAL_API_SECRET_ARN"} in result[
         "issues"
     ]
