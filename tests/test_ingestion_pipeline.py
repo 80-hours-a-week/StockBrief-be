@@ -12,6 +12,7 @@ from app.services.external.clients import NAVER_PROVIDER, OPENDART_PROVIDER
 from app.services.external.types import ExternalApiResult
 from app.services import ingestion as ingestion_module
 from app.services.ingestion import (
+    check_ingestion_readiness,
     NoopPayloadArchiver,
     ProviderIngestionRequest,
     ProviderIngestionService,
@@ -479,3 +480,91 @@ def test_hydrate_external_api_settings_reads_external_secret(monkeypatch) -> Non
     assert settings.opendart_api_key == "opendart-secret"
     assert settings.naver_client_id == "naver-id"
     assert settings.naver_client_secret == "naver-secret"
+
+
+def test_check_ingestion_readiness_reports_missing_configuration_without_secret_values() -> None:
+    result = check_ingestion_readiness(Settings())
+
+    assert result["ok"] is False
+    assert result["checks"]["raw_archive"] == {"configured": False}
+    assert result["checks"]["external_api_secret"] == {
+        "configured": False,
+        "loaded": False,
+        "error": None,
+    }
+    assert result["checks"]["providers"] == {
+        OPENDART_PROVIDER: {"api_key_configured": False},
+        NAVER_PROVIDER: {
+            "client_id_configured": False,
+            "client_secret_configured": False,
+        },
+    }
+    assert result["checks"]["network"]["outbound_internet_egress_verified"] is False
+    assert result["issues"] == [
+        {"code": "missing_external_api_secret_arn", "field": "EXTERNAL_API_SECRET_ARN"},
+        {"code": "missing_ingestion_raw_bucket", "field": "INGESTION_RAW_BUCKET"},
+        {"code": "missing_provider_credential", "field": "OPENDART_API_KEY"},
+        {"code": "missing_provider_credential", "field": "NAVER_CLIENT_ID"},
+        {"code": "missing_provider_credential", "field": "NAVER_CLIENT_SECRET"},
+    ]
+
+
+def test_check_ingestion_readiness_loads_external_secret_without_exposing_values(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.ingestion.load_secret_json",
+        lambda _secret_arn: {
+            "OPENDART_API_KEY": "opendart-secret",
+            "NAVER_CLIENT_ID": "naver-id",
+            "NAVER_CLIENT_SECRET": "naver-secret",
+        },
+    )
+
+    result = check_ingestion_readiness(
+        Settings(
+            EXTERNAL_API_SECRET_ARN="arn:aws:secretsmanager:ap-northeast-2:123:secret:external",
+            INGESTION_RAW_BUCKET="stockbrief-dev-raw",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert result["checks"]["raw_archive"] == {"configured": True}
+    assert result["checks"]["external_api_secret"] == {
+        "configured": True,
+        "loaded": True,
+        "error": None,
+    }
+    serialized = str(result)
+    assert "opendart-secret" not in serialized
+    assert "naver-id" not in serialized
+    assert "naver-secret" not in serialized
+
+
+def test_check_ingestion_readiness_returns_secret_load_error(monkeypatch) -> None:
+    def fail_secret_load(_secret_arn):
+        raise RuntimeError("secret unavailable")
+
+    monkeypatch.setattr("app.services.ingestion.load_secret_json", fail_secret_load)
+
+    result = check_ingestion_readiness(
+        Settings(
+            EXTERNAL_API_SECRET_ARN="arn:aws:secretsmanager:ap-northeast-2:123:secret:external",
+            INGESTION_RAW_BUCKET="stockbrief-dev-raw",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["checks"]["external_api_secret"] == {
+        "configured": True,
+        "loaded": False,
+        "error": {
+            "code": "RuntimeError",
+            "message": "External API secret could not be loaded.",
+        },
+    }
+    assert "secret unavailable" not in str(result)
+    assert {"code": "external_api_secret_load_failed", "field": "EXTERNAL_API_SECRET_ARN"} in result[
+        "issues"
+    ]

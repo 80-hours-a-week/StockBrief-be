@@ -172,6 +172,110 @@ variables when the repository has multiple deploy environments. Add GitHub
 Environment required reviewers later if the team wants manual approval before
 dev apply.
 
+## Dev Cost Pause And Resume Runbook
+
+Use this runbook when the dev AWS account must be paused overnight or during an
+inactive review window. This is an operator action, not a Terraform replacement:
+pause only runtime activity, keep Terraform state, IAM, Cognito, Secrets
+Manager, and the state backend intact.
+
+Before pausing, record the current target account and Terraform state:
+
+```bash
+aws sts get-caller-identity --profile stockbrief-dev
+
+cd infra/terraform
+terraform init -reconfigure
+terraform state list
+terraform output api_base_url
+terraform output ingestion_dlq_url
+```
+
+Pause checklist:
+
+- Confirm no PR is waiting for a live AWS smoke test.
+- Keep `enable_ingestion_scheduler = false` unless a reviewed PR explicitly
+  enables it.
+- Stop the dev RDS instance when database work is done:
+
+  ```bash
+  aws rds stop-db-instance \
+    --db-instance-identifier stockbrief-dev-postgres \
+    --profile stockbrief-dev \
+    --region ap-northeast-2
+  ```
+
+  RDS stop is a short-term pause control, not a permanent shutdown state. For a
+  multi-day pause, re-check the DB status before the next billing window and
+  stop it again if AWS has returned it to `available`.
+
+- Block accidental API Lambda execution while the database is stopped:
+
+  ```bash
+  aws lambda put-function-concurrency \
+    --function-name stockbrief-dev-api \
+    --reserved-concurrent-executions 0 \
+    --profile stockbrief-dev \
+    --region ap-northeast-2
+  ```
+
+- If Amplify preview or production-like web checks are not needed, disable
+  branch auto build in the Amplify console. Do not delete the app unless the
+  team has approved a full environment teardown.
+- Do not delete Terraform-managed resources from the AWS console. Console
+  deletion creates drift that the next apply must repair or import.
+
+Resume checklist:
+
+- Start RDS and wait until it is available:
+
+  ```bash
+  aws rds start-db-instance \
+    --db-instance-identifier stockbrief-dev-postgres \
+    --profile stockbrief-dev \
+    --region ap-northeast-2
+
+  aws rds wait db-instance-available \
+    --db-instance-identifier stockbrief-dev-postgres \
+    --profile stockbrief-dev \
+    --region ap-northeast-2
+  ```
+
+- Restore normal Lambda execution:
+
+  ```bash
+  aws lambda delete-function-concurrency \
+    --function-name stockbrief-dev-api \
+    --profile stockbrief-dev \
+    --region ap-northeast-2
+  ```
+
+- Re-enable Amplify branch auto build only if frontend deploy validation is part
+  of the day's work.
+- Run a no-change Terraform plan before new infrastructure work:
+
+  ```bash
+  cd infra/terraform
+  terraform plan -var-file=envs/dev/deploy.auto.tfvars.json
+  ```
+
+- Run smoke checks after RDS and Lambda are healthy:
+
+  ```bash
+  aws lambda invoke \
+    --function-name stockbrief-dev-api \
+    --payload '{"stockbrief_operation":"migrate"}' \
+    --cli-binary-format raw-in-base64-out \
+    /tmp/stockbrief-migrate-response.json \
+    --profile stockbrief-dev \
+    --region ap-northeast-2
+
+  curl -i "$(terraform output -raw api_base_url)/v1/recommendations/candidates?limit=3"
+  ```
+
+If the no-change plan reports drift after a pause, stop and inspect the drift
+before applying. Do not use `terraform apply` as a blind repair step.
+
 ## Deploy Role Permission Model
 
 The bootstrap script creates a GitHub Actions deploy role for Terraform-driven
