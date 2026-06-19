@@ -75,6 +75,7 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    - `db_security_group_ids`
    - `lambda_subnet_ids`
    - `lambda_security_group_ids`
+   - `vpc_endpoint_route_table_ids`
    - `cors_allowed_origins`
    - `cognito_callback_urls`
 - `cognito_logout_urls`
@@ -284,6 +285,8 @@ Terraform creates these ingestion resources:
 
 - S3 raw archive bucket when `enable_ingestion_raw_archive = true`
 - Customer-managed KMS key for S3 raw archive SSE-KMS encryption
+- S3 Gateway VPC Endpoint for the Lambda subnet route tables when managed
+  networking and raw archive are enabled
 - SQS DLQ with SQS-managed server-side encryption for failed scheduled invocations
 - EventBridge Scheduler only when `enable_ingestion_scheduler = true` and
   `ingestion_schedule_tickers` is non-empty
@@ -298,6 +301,9 @@ External API secret values must be stored under:
 Keep the scheduler disabled for the first dev apply. Manually invoke
 `ingest_provider_batch` first, confirm `ingestion_runs`, normalized rows, S3 raw
 objects, and DLQ behavior, then enable the scheduler in a separate reviewed PR.
+If Lambda runs in private subnets, S3 raw archive requires the S3 Gateway VPC
+Endpoint. Real external provider calls still require an outbound internet path
+such as NAT or another approved egress design before enabling scheduled jobs.
 
 ## AgentCore Runtime
 

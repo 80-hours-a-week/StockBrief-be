@@ -28,6 +28,7 @@ rds_proxy_security_group_ids = []
 enable_rds_proxy         = false
 lambda_subnet_ids         = []
 lambda_security_group_ids = []
+vpc_endpoint_route_table_ids = []
 
 enable_operational_alarms       = true
 operational_alarm_email_addresses = []

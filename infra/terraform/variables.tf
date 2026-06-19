@@ -178,6 +178,12 @@ variable "lambda_security_group_ids" {
   default     = []
 }
 
+variable "vpc_endpoint_route_table_ids" {
+  description = "Route table IDs that should receive Gateway VPC endpoints for private AWS service access from Lambda subnets."
+  type        = list(string)
+  default     = []
+}
+
 variable "enable_operational_alarms" {
   description = "Whether to create baseline CloudWatch operational alarms for Lambda, API Gateway, and RDS."
   type        = bool

@@ -73,6 +73,7 @@ def test_new_aws_bootstrap_does_not_pin_old_dev_account() -> None:
     assert '"vpc_id": "vpc-07b9f3920d93b65e1"' in deploy_tfvars
     assert "subnet-08d89333a3c3e2924" in deploy_tfvars
     assert "subnet-0e10680a556fa9ca8" in deploy_tfvars
+    assert "rtb-01a4330966a81395a" in deploy_tfvars
 
 
 def test_agentcore_runtime_module_uses_cloudformation_resources() -> None:
@@ -139,6 +140,11 @@ def test_ingestion_pipeline_resources_are_wired_with_scheduler_disabled_by_defau
     assert "INGESTION_RAW_BUCKET" in api_lambda_tf
     assert "s3:PutObject" in api_lambda_tf
     assert "kms:GenerateDataKey" in api_lambda_tf
+    assert 'variable "vpc_endpoint_route_table_ids"' in variables_tf
+    assert 'resource "aws_vpc_endpoint" "s3"' in root_main_tf
+    assert 'service_name      = "com.amazonaws.${var.aws_region}.s3"' in root_main_tf
+    assert 'vpc_endpoint_type = "Gateway"' in root_main_tf
+    assert "route_table_ids   = var.vpc_endpoint_route_table_ids" in root_main_tf
     assert 'output "ingestion_raw_bucket_name"' in outputs_tf
     assert 'output "ingestion_raw_kms_key_arn"' in outputs_tf
     assert 'output "ingestion_dlq_url"' in outputs_tf
