@@ -29,7 +29,20 @@ def test_external_api_logger_redacts_secret_like_request_params(
             "crtfc_key": "opendart-secret",
             "client_secret": "naver-secret",
             "access_token": "token-secret",
+            "Authorization": "Bearer nested-token",
             "corp_code": "MOCK00126380",
+            "headers": {
+                "X-Naver-Client-Secret": "nested-naver-secret",
+                "X-Naver-Client-Id": "nested-naver-id",
+            },
+            "nested": {
+                "ApiKey": "nested-api-key",
+                "safe": "kept",
+                "items": [
+                    {"refreshToken": "nested-refresh-token"},
+                    {"display": 10},
+                ],
+            },
         },
         status_code=200,
         duration_ms=10,
@@ -40,11 +53,29 @@ def test_external_api_logger_redacts_secret_like_request_params(
         "crtfc_key": "[REDACTED]",
         "client_secret": "[REDACTED]",
         "access_token": "[REDACTED]",
+        "Authorization": "[REDACTED]",
         "corp_code": "MOCK00126380",
+        "headers": {
+            "X-Naver-Client-Secret": "[REDACTED]",
+            "X-Naver-Client-Id": "[REDACTED]",
+        },
+        "nested": {
+            "ApiKey": "[REDACTED]",
+            "safe": "kept",
+            "items": [
+                {"refreshToken": "[REDACTED]"},
+                {"display": 10},
+            ],
+        },
     }
     assert "opendart-secret" not in str(log.request_params)
     assert "naver-secret" not in str(log.request_params)
     assert "token-secret" not in str(log.request_params)
+    assert "nested-naver-secret" not in str(log.request_params)
+    assert "nested-naver-id" not in str(log.request_params)
+    assert "Bearer nested-token" not in str(log.request_params)
+    assert "nested-api-key" not in str(log.request_params)
+    assert "nested-refresh-token" not in str(log.request_params)
 
 
 def test_aws_secret_loader_uses_boto3_client(monkeypatch) -> None:
