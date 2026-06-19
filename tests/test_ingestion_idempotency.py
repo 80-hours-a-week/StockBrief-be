@@ -146,6 +146,34 @@ def test_succeeded_run_replays_instead_of_restarting(db_session: Session) -> Non
     assert replayed.result_counts == {"inserted": 1}
 
 
+def test_succeeded_run_with_different_input_hash_is_not_restarted(
+    db_session: Session,
+) -> None:
+    service = IngestionIdempotencyService(db_session)
+    run = service.start_run(
+        run_id="opendart-20260618-005930",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930"},
+        input_hash="original-hash",
+    )
+    service.mark_succeeded(run=run, result_counts={"inserted": 1})
+
+    with pytest.raises(ValueError, match="ingestion_run_already_active"):
+        service.start_or_restart_run(
+            run_id="opendart-20260618-005930",
+            job_type="disclosure",
+            provider="OpenDART",
+            target_scope={"ticker": "005930", "source_date": "2026-06-18"},
+            input_hash="changed-hash",
+        )
+
+    db_session.refresh(run)
+    assert run.status == "succeeded"
+    assert run.input_hash == "original-hash"
+    assert run.result_counts == {"inserted": 1}
+
+
 def test_active_run_cannot_be_restarted(db_session: Session) -> None:
     service = IngestionIdempotencyService(db_session)
     service.start_run(
