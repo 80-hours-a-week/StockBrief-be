@@ -315,6 +315,9 @@ Replay policy:
   when a later request uses a different explicit `run_id`.
 - An active run with the same `input_hash` blocks another run until the first
   run reaches a terminal status.
+- A partial unique index on active or succeeded `input_hash` values prevents
+  concurrent first-run workers from creating multiple active ledger rows for the
+  same normalized input.
 
 | Field | Type | Required | Example | Notes |
 | --- | --- | --- | --- | --- |
@@ -391,6 +394,8 @@ Stores user and assistant chat messages with safety metadata.
 - Unique `recommendation_reasons.reason_id`.
 - Unique `api_cache_entries.cache_key`.
 - Unique `ingestion_runs.run_id`.
+- Unique partial `ingestion_runs(input_hash)` for `started` and `succeeded`
+  rows.
 - Unique `chat_sessions.session_id`.
 - Unique `chat_messages.message_id`.
 - Index `recommendation_scores(as_of_date, is_candidate_eligible, total_score desc)`.

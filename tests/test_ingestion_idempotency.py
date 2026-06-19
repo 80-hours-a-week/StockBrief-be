@@ -76,6 +76,67 @@ def test_run_id_is_unique(db_session: Session) -> None:
         db_session.commit()
 
 
+def test_active_input_hash_is_unique_across_different_run_ids(db_session: Session) -> None:
+    db_session.add(
+        IngestionRun(
+            run_id="opendart-20260618-005930-a",
+            job_type="disclosure",
+            provider="OpenDART",
+            target_scope={"ticker": "005930"},
+            status="started",
+            input_hash="same-hash",
+            started_at=datetime.now(timezone.utc),
+            result_counts={},
+        )
+    )
+    db_session.commit()
+
+    db_session.add(
+        IngestionRun(
+            run_id="opendart-20260618-005930-b",
+            job_type="disclosure",
+            provider="OpenDART",
+            target_scope={"ticker": "005930"},
+            status="started",
+            input_hash="same-hash",
+            started_at=datetime.now(timezone.utc),
+            result_counts={},
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_terminal_failed_input_hash_can_be_reused(db_session: Session) -> None:
+    db_session.add(
+        IngestionRun(
+            run_id="opendart-20260618-005930-a",
+            job_type="disclosure",
+            provider="OpenDART",
+            target_scope={"ticker": "005930"},
+            status="failed",
+            input_hash="same-hash",
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            result_counts={},
+        )
+    )
+    db_session.commit()
+
+    service = IngestionIdempotencyService(db_session)
+    run = service.start_or_restart_run(
+        run_id="opendart-20260618-005930-b",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930"},
+        input_hash="same-hash",
+    )
+
+    assert run.run_id == "opendart-20260618-005930-b"
+    assert run.status == "started"
+
+
 def test_duplicate_detection_only_counts_succeeded_runs(db_session: Session) -> None:
     service = IngestionIdempotencyService(db_session)
     input_hash = service.compute_input_hash({"ticker": "005930"})
@@ -279,6 +340,80 @@ def test_insert_race_recovers_to_existing_active_run_guard(
     with pytest.raises(ValueError, match="ingestion_run_already_active"):
         service.start_or_restart_run(
             run_id="opendart-20260618-005930",
+            job_type="disclosure",
+            provider="OpenDART",
+            target_scope={"ticker": "005930"},
+            input_hash="same-hash",
+        )
+
+
+def test_input_hash_insert_race_recovers_to_existing_succeeded_run(
+    monkeypatch,
+    db_session: Session,
+) -> None:
+    service = IngestionIdempotencyService(db_session)
+
+    def fake_start_run(**kwargs):
+        db_session.add(
+            IngestionRun(
+                run_id="opendart-20260618-005930-existing",
+                job_type=kwargs["job_type"],
+                provider=kwargs["provider"],
+                target_scope=kwargs["target_scope"],
+                status="succeeded",
+                input_hash=kwargs["input_hash"],
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
+                result_counts={"inserted": 1},
+            )
+        )
+        db_session.commit()
+        raise IntegrityError("insert", {}, Exception("active input_hash unique violation"))
+
+    monkeypatch.setattr(service, "start_run", fake_start_run)
+
+    recovered = service.start_or_restart_run(
+        run_id="opendart-20260618-005930-requested",
+        job_type="disclosure",
+        provider="OpenDART",
+        target_scope={"ticker": "005930"},
+        input_hash="same-hash",
+    )
+
+    assert recovered.run_id == "opendart-20260618-005930-existing"
+    assert recovered.status == "succeeded"
+
+
+def test_input_hash_insert_race_recovers_to_existing_active_run_guard(
+    monkeypatch,
+    db_session: Session,
+) -> None:
+    service = IngestionIdempotencyService(db_session)
+
+    def fake_start_run(**kwargs):
+        db_session.add(
+            IngestionRun(
+                run_id="opendart-20260618-005930-existing",
+                job_type=kwargs["job_type"],
+                provider=kwargs["provider"],
+                target_scope=kwargs["target_scope"],
+                status="started",
+                input_hash=kwargs["input_hash"],
+                started_at=datetime.now(timezone.utc),
+                result_counts={},
+            )
+        )
+        db_session.commit()
+        raise IntegrityError("insert", {}, Exception("active input_hash unique violation"))
+
+    monkeypatch.setattr(service, "start_run", fake_start_run)
+
+    with pytest.raises(
+        ValueError,
+        match="ingestion_run_already_active:opendart-20260618-005930-existing",
+    ):
+        service.start_or_restart_run(
+            run_id="opendart-20260618-005930-requested",
             job_type="disclosure",
             provider="OpenDART",
             target_scope={"ticker": "005930"},
