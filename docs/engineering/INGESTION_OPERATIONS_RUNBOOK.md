@@ -130,20 +130,37 @@ Expected result:
 
 ## Raw Archive Verification
 
-Confirm the raw archive bucket exists and new objects were written for the
-manual run:
+Confirm the raw archive bucket exists and new objects were written for the exact
+manual run. Do not inspect the bucket root because older objects can make a
+stale archive look current.
 
 ```bash
 aws s3api list-objects-v2 \
   --bucket "$(terraform output -raw ingestion_raw_bucket_name)" \
-  --max-items 20 \
+  --prefix "raw/provider=OpenDART/ticker=005930/" \
+  --query "Contents[?contains(Key, 'run_id=')].[Key,LastModified,Size]" \
   --profile stockbrief-dev \
   --region ap-northeast-2
 ```
 
+If the Lambda response includes `raw_archive_uri`, verify the exact object key
+instead of relying on a prefix listing:
+
+```bash
+aws s3api head-object \
+  --bucket "$(terraform output -raw ingestion_raw_bucket_name)" \
+  --key "raw/provider=OpenDART/ticker=005930/run_id=REPLACE_WITH_RUN_ID.json" \
+  --profile stockbrief-dev \
+  --region ap-northeast-2
+```
+
+Repeat the same check with the `raw/provider=NAVER_NEWS/ticker=005930/` prefix
+or the exact `raw_archive_uri` returned by the NAVER manual run.
+
 Expected result:
 
-- New S3 objects exist for the provider run.
+- New S3 objects exist under the provider/ticker prefix or the exact
+  `raw_archive_uri` key returned by the provider run.
 - Objects use the Terraform-managed raw archive bucket.
 - Object bodies are not copied into PR comments because they may include
   provider payload details.

@@ -35,6 +35,11 @@ def test_ingestion_operations_runbook_covers_storage_dlq_and_logs() -> None:
     assert "from disclosures" in runbook
     assert "from news_items" in runbook
     assert "aws s3api list-objects-v2" in runbook
+    assert '--prefix "raw/provider=OpenDART/ticker=005930/"' in runbook
+    assert "raw/provider=NAVER_NEWS/ticker=005930/" in runbook
+    assert "raw_archive_uri" in runbook
+    assert "aws s3api head-object" in runbook
+    assert "REPLACE_WITH_RUN_ID" in runbook
     assert "aws sqs get-queue-attributes" in runbook
     assert "ApproximateNumberOfMessages" in runbook
     assert "aws logs filter-log-events" in runbook
