@@ -259,6 +259,22 @@ Otherwise, it builds a PostgreSQL URL from `DATABASE_HOST` plus the secret's
 
 ## Provider Ingestion
 
+Before running a provider job or enabling the scheduler, call the readiness
+operation from the same Lambda maintenance handler:
+
+```json
+{
+  "stockbrief_operation": "check_ingestion_readiness"
+}
+```
+
+The readiness response reports whether `INGESTION_RAW_BUCKET`,
+`EXTERNAL_API_SECRET_ARN`, `OPENDART_API_KEY`, `NAVER_CLIENT_ID`, and
+`NAVER_CLIENT_SECRET` are configured. It reports presence only and does not
+return secret values. It also does not call external provider APIs, so outbound
+internet egress must still be verified separately before scheduled ingestion is
+enabled.
+
 The backend Lambda can run provider ingestion through the same handler used for
 maintenance events:
 

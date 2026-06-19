@@ -441,26 +441,113 @@ def handle_ingestion_event(event: dict[str, object]) -> dict[str, Any]:
     return result
 
 
+def check_ingestion_readiness(settings: Settings | None = None) -> dict[str, Any]:
+    base_settings = settings or get_settings()
+    issues: list[dict[str, str]] = []
+    secret_load_error: dict[str, str] | None = None
+    hydrated_settings = base_settings
+
+    if base_settings.external_api_secret_arn:
+        try:
+            hydrated_settings = hydrate_external_api_settings(base_settings)
+        except Exception as exc:
+            secret_load_error = {
+                "code": exc.__class__.__name__,
+                "message": "External API secret could not be loaded.",
+            }
+            issues.append(
+                {
+                    "code": "external_api_secret_load_failed",
+                    "field": "EXTERNAL_API_SECRET_ARN",
+                }
+            )
+    else:
+        issues.append(
+            {
+                "code": "missing_external_api_secret_arn",
+                "field": "EXTERNAL_API_SECRET_ARN",
+            }
+        )
+
+    if not hydrated_settings.ingestion_raw_bucket:
+        issues.append(
+            {
+                "code": "missing_ingestion_raw_bucket",
+                "field": "INGESTION_RAW_BUCKET",
+            }
+        )
+    if not hydrated_settings.opendart_api_key:
+        issues.append(
+            {
+                "code": "missing_provider_credential",
+                "field": "OPENDART_API_KEY",
+            }
+        )
+    if not hydrated_settings.naver_client_id:
+        issues.append(
+            {
+                "code": "missing_provider_credential",
+                "field": "NAVER_CLIENT_ID",
+            }
+        )
+    if not hydrated_settings.naver_client_secret:
+        issues.append(
+            {
+                "code": "missing_provider_credential",
+                "field": "NAVER_CLIENT_SECRET",
+            }
+        )
+
+    return {
+        "ok": not issues,
+        "checks": {
+            "raw_archive": {
+                "configured": bool(hydrated_settings.ingestion_raw_bucket),
+            },
+            "external_api_secret": {
+                "configured": bool(base_settings.external_api_secret_arn),
+                "loaded": bool(base_settings.external_api_secret_arn) and secret_load_error is None,
+                "error": secret_load_error,
+            },
+            "providers": {
+                OPENDART_PROVIDER: {
+                    "api_key_configured": bool(hydrated_settings.opendart_api_key),
+                },
+                NAVER_PROVIDER: {
+                    "client_id_configured": bool(hydrated_settings.naver_client_id),
+                    "client_secret_configured": bool(hydrated_settings.naver_client_secret),
+                },
+            },
+            "network": {
+                "outbound_internet_egress_verified": False,
+                "note": "This check does not call external provider APIs.",
+            },
+        },
+        "issues": issues,
+    }
+
+
 def hydrate_external_api_settings(settings: Settings) -> Settings:
     if settings.opendart_api_key and settings.naver_client_id and settings.naver_client_secret:
         return settings
     if not settings.external_api_secret_arn:
         return settings
     secret = load_secret_json(settings.external_api_secret_arn)
-    return Settings(
-        **settings.model_dump(),
-        OPENDART_API_KEY=(
-            settings.opendart_api_key
-            or _first_secret_value(secret, "OPENDART_API_KEY", "opendart_api_key")
-        ),
-        NAVER_CLIENT_ID=(
-            settings.naver_client_id
-            or _first_secret_value(secret, "NAVER_CLIENT_ID", "naver_client_id")
-        ),
-        NAVER_CLIENT_SECRET=(
-            settings.naver_client_secret
-            or _first_secret_value(secret, "NAVER_CLIENT_SECRET", "naver_client_secret")
-        ),
+    return settings.model_copy(
+        update={
+            "opendart_api_key": (
+                settings.opendart_api_key
+                or _first_secret_value(secret, "OPENDART_API_KEY", "opendart_api_key")
+            ),
+            "naver_client_id": (
+                settings.naver_client_id
+                or _first_secret_value(secret, "NAVER_CLIENT_ID", "naver_client_id")
+            ),
+            "naver_client_secret": (
+                settings.naver_client_secret
+                or _first_secret_value(secret, "NAVER_CLIENT_SECRET", "naver_client_secret")
+            ),
+        }
     )
 
 
