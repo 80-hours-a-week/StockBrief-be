@@ -67,3 +67,21 @@ def test_terraform_readme_documents_multi_repository_layout() -> None:
     assert "StockBrief-fe" in terraform_readme
     assert "apps/web" not in terraform_readme
     assert "services/api" not in terraform_readme
+
+
+def test_ingestion_scheduler_enable_gate_documents_live_provider_prerequisites() -> None:
+    terraform_readme = (REPOSITORY_ROOT / "infra/terraform/README.md").read_text(
+        encoding="utf-8"
+    )
+    cloud_plan = (
+        REPOSITORY_ROOT / "docs/engineering/CLOUD_DEV_PLAN.md"
+    ).read_text(encoding="utf-8")
+
+    for document in (terraform_readme, cloud_plan):
+        assert "Scheduler Enable Gate" in document or "Scheduler enable gate" in document
+        assert "Secrets Manager" in document
+        assert "ingest_provider_batch" in document
+        assert "outbound internet egress" in document
+        assert "S3 raw archive" in document
+        assert "DLQ" in document
+        assert "rate-limit" in document or "rate limits" in document
