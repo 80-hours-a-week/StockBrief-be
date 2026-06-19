@@ -47,15 +47,16 @@ payloads into PR comments, shared logs, or issue comments.
 
 ## Manual Provider Smoke
 
-Use one ticker first. Keep the response files in `/tmp` and summarize only the
-non-secret status fields in PR evidence.
+Use one ticker first. Replace `YYYY-MM-DD` with the business date you want to
+verify. Keep the response files in `/tmp` and summarize only the non-secret
+status fields in PR evidence.
 
 OpenDART:
 
 ```bash
 aws lambda invoke \
   --function-name stockbrief-dev-api \
-  --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"OpenDART","tickers":["005930"],"source_date":"2026-06-18"}' \
+  --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"OpenDART","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
   --cli-binary-format raw-in-base64-out \
   /tmp/stockbrief-opendart-ingest-response.json \
   --profile stockbrief-dev \
@@ -67,7 +68,7 @@ NAVER news:
 ```bash
 aws lambda invoke \
   --function-name stockbrief-dev-api \
-  --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"NAVER_NEWS","tickers":["005930"],"source_date":"2026-06-18"}' \
+  --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"NAVER_NEWS","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
   --cli-binary-format raw-in-base64-out \
   /tmp/stockbrief-naver-ingest-response.json \
   --profile stockbrief-dev \

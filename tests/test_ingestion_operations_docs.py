@@ -22,6 +22,9 @@ def test_ingestion_operations_runbook_exists_and_covers_manual_smoke() -> None:
     assert '"stockbrief_operation":"ingest_provider_batch"' in runbook
     assert '"provider":"OpenDART"' in runbook
     assert '"provider":"NAVER_NEWS"' in runbook
+    assert '"source_date":"YYYY-MM-DD"' in runbook
+    assert "Replace `YYYY-MM-DD`" in runbook
+    assert "with the business date you want to" in runbook
     assert "missing_api_key" in runbook
     assert "replayed or duplicate-safe result" in runbook
 
