@@ -179,7 +179,10 @@ def test_explicit_run_id_is_scoped_per_ticker_in_batch(
     monkeypatch,
     seeded_session: Session,
 ) -> None:
+    provider_calls: list[str] = []
+
     def fake_list_disclosures(self, *, ticker: str, corp_code=None, page_count: int = 10):
+        provider_calls.append(ticker)
         return ExternalApiResult(
             provider=OPENDART_PROVIDER,
             endpoint="/list.json",
@@ -211,7 +214,7 @@ def test_explicit_run_id_is_scoped_per_ticker_in_batch(
     result = service.run_provider_batch(
         ProviderIngestionRequest(
             provider=OPENDART_PROVIDER,
-            tickers=["005930", "000660"],
+            tickers=["005930", "005930", "000660"],
             source_date="2026-06-18",
             run_id="manual-run",
         )
@@ -222,6 +225,7 @@ def test_explicit_run_id_is_scoped_per_ticker_in_batch(
         "manual-run-005930",
         "manual-run-000660",
     ]
+    assert provider_calls == ["005930", "000660"]
 
     runs = seeded_session.scalars(
         select(IngestionRun)
