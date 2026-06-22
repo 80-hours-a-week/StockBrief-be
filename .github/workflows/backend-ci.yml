@@ -28,6 +28,9 @@ jobs:
       - name: Verify repository contract files
         run: test -f .env.example
 
+      - name: Check Lambda packaging script syntax
+        run: bash -n scripts/package_api_lambda.sh
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"

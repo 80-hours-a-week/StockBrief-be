@@ -55,6 +55,16 @@ def test_lambda_packaging_script_targets_backend_repository_root() -> None:
     assert "services/api" not in script
 
 
+def test_backend_ci_checks_lambda_packaging_script_on_pr() -> None:
+    workflow = (REPOSITORY_ROOT / ".github/workflows/backend-ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "pull_request:" in workflow
+    assert "Check Lambda packaging script syntax" in workflow
+    assert "bash -n scripts/package_api_lambda.sh" in workflow
+
+
 def test_external_api_secret_update_script_handles_secret_payload_safely() -> None:
     script = (REPOSITORY_ROOT / "scripts/update_external_api_secret.sh").read_text(
         encoding="utf-8"
