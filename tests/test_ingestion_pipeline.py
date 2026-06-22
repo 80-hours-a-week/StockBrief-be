@@ -9,9 +9,11 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.orm import Disclosure, IngestionRun, NewsItem, SourceDocument
 from app.services.external.clients import NAVER_PROVIDER, OPENDART_PROVIDER
-from app.services.external.types import ExternalApiResult
+from app.services.external.types import ExternalApiResult, ExternalRequest, ExternalResponse
 from app.services import ingestion as ingestion_module
 from app.services.ingestion import (
+    check_ingestion_readiness,
+    check_provider_egress,
     NoopPayloadArchiver,
     ProviderIngestionRequest,
     ProviderIngestionService,
@@ -89,6 +91,53 @@ def test_provider_ingestion_request_normalizes_event_fields() -> None:
     assert request.news_display == 3
 
 
+def test_provider_ingestion_rejects_requests_above_operational_limits(
+    monkeypatch,
+    seeded_session: Session,
+) -> None:
+    provider_called = False
+
+    def fail_if_called(self, *, ticker: str, corp_code=None, page_count: int = 10):
+        nonlocal provider_called
+        provider_called = True
+        raise AssertionError("provider call should not run when request limits are exceeded")
+
+    monkeypatch.setattr(
+        "app.services.ingestion.OpenDartClient.list_disclosures",
+        fail_if_called,
+    )
+    service = ProviderIngestionService(
+        seeded_session,
+        settings=Settings(OPENDART_API_KEY="test-key"),
+        archiver=NoopPayloadArchiver(),
+    )
+
+    result = service.run_provider_batch(
+        ProviderIngestionRequest(
+            provider=OPENDART_PROVIDER,
+            tickers=[f"{index:06d}" for index in range(21)],
+            source_date="2026-06-18",
+            page_count=101,
+            news_display=51,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "request_limit_exceeded"
+    assert result["limits"] == {
+        "max_tickers": 20,
+        "max_page_count": 100,
+        "max_news_display": 50,
+    }
+    assert result["violations"] == [
+        {"field": "tickers", "value": 21, "max": 20},
+        {"field": "page_count", "value": 101, "max": 100},
+        {"field": "news_display", "value": 51, "max": 50},
+    ]
+    assert provider_called is False
+    assert seeded_session.scalars(select(IngestionRun)).all() == []
+
+
 def test_opendart_ingestion_upserts_disclosures_and_sources(
     monkeypatch,
     seeded_session: Session,
@@ -137,6 +186,14 @@ def test_opendart_ingestion_upserts_disclosures_and_sources(
             source_date="2026-06-18",
         )
     )
+    replay_with_different_run_id = service.run_provider_batch(
+        ProviderIngestionRequest(
+            provider=OPENDART_PROVIDER,
+            tickers=["005930"],
+            source_date="2026-06-18",
+            run_id="manual-rerun",
+        )
+    )
 
     assert result["ok"] is True
     assert result["results"][0]["status"] == "succeeded"
@@ -146,6 +203,8 @@ def test_opendart_ingestion_upserts_disclosures_and_sources(
         "skipped": 0,
     }
     assert replay["results"][0]["status"] == "replayed"
+    assert replay_with_different_run_id["results"][0]["status"] == "replayed"
+    assert replay_with_different_run_id["results"][0]["run_id"] == "manual-rerun-005930"
     assert len(archiver.calls) == 1
 
     disclosure = seeded_session.scalars(
@@ -479,3 +538,179 @@ def test_hydrate_external_api_settings_reads_external_secret(monkeypatch) -> Non
     assert settings.opendart_api_key == "opendart-secret"
     assert settings.naver_client_id == "naver-id"
     assert settings.naver_client_secret == "naver-secret"
+
+
+def test_check_ingestion_readiness_reports_missing_configuration_without_secret_values() -> None:
+    result = check_ingestion_readiness(Settings())
+
+    assert result["ok"] is False
+    assert result["checks"]["raw_archive"] == {"configured": False}
+    assert result["checks"]["external_api_secret"] == {
+        "configured": False,
+        "loaded": False,
+        "error": None,
+    }
+    assert result["checks"]["providers"] == {
+        OPENDART_PROVIDER: {"api_key_configured": False},
+        NAVER_PROVIDER: {
+            "client_id_configured": False,
+            "client_secret_configured": False,
+        },
+    }
+    assert result["checks"]["network"]["outbound_internet_egress_verified"] is False
+    assert result["issues"] == [
+        {"code": "missing_external_api_secret_arn", "field": "EXTERNAL_API_SECRET_ARN"},
+        {"code": "missing_ingestion_raw_bucket", "field": "INGESTION_RAW_BUCKET"},
+        {"code": "missing_provider_credential", "field": "OPENDART_API_KEY"},
+        {"code": "missing_provider_credential", "field": "NAVER_CLIENT_ID"},
+        {"code": "missing_provider_credential", "field": "NAVER_CLIENT_SECRET"},
+    ]
+
+
+def test_check_ingestion_readiness_loads_external_secret_without_exposing_values(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.ingestion.load_secret_json",
+        lambda _secret_arn: {
+            "OPENDART_API_KEY": "opendart-secret",
+            "NAVER_CLIENT_ID": "naver-id",
+            "NAVER_CLIENT_SECRET": "naver-secret",
+        },
+    )
+
+    result = check_ingestion_readiness(
+        Settings(
+            EXTERNAL_API_SECRET_ARN="arn:aws:secretsmanager:ap-northeast-2:123:secret:external",
+            INGESTION_RAW_BUCKET="stockbrief-dev-raw",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert result["checks"]["raw_archive"] == {"configured": True}
+    assert result["checks"]["external_api_secret"] == {
+        "configured": True,
+        "loaded": True,
+        "error": None,
+    }
+    serialized = str(result)
+    assert "opendart-secret" not in serialized
+    assert "naver-id" not in serialized
+    assert "naver-secret" not in serialized
+
+
+def test_check_ingestion_readiness_returns_secret_load_error(monkeypatch) -> None:
+    def fail_secret_load(_secret_arn):
+        raise RuntimeError("secret unavailable")
+
+    monkeypatch.setattr("app.services.ingestion.load_secret_json", fail_secret_load)
+
+    result = check_ingestion_readiness(
+        Settings(
+            EXTERNAL_API_SECRET_ARN="arn:aws:secretsmanager:ap-northeast-2:123:secret:external",
+            INGESTION_RAW_BUCKET="stockbrief-dev-raw",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["checks"]["external_api_secret"] == {
+        "configured": True,
+        "loaded": False,
+        "error": {
+            "code": "RuntimeError",
+            "message": "External API secret could not be loaded.",
+        },
+    }
+    assert "secret unavailable" not in str(result)
+    assert {"code": "external_api_secret_load_failed", "field": "EXTERNAL_API_SECRET_ARN"} in result[
+        "issues"
+    ]
+
+
+def test_check_provider_egress_reports_reachable_provider_endpoints() -> None:
+    calls: list[ExternalRequest] = []
+
+    def fake_transport(request: ExternalRequest) -> ExternalResponse:
+        calls.append(request)
+        return ExternalResponse(status_code=401, payload={})
+
+    result = check_provider_egress(transport=fake_transport)
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert result["checks"]["providers"][OPENDART_PROVIDER]["reachable"] is True
+    assert result["checks"]["providers"][NAVER_PROVIDER]["reachable"] is True
+    assert [call.method for call in calls] == ["GET", "GET"]
+    assert all(call.headers == {} for call in calls)
+    assert all(call.timeout_seconds == 3.0 for call in calls)
+
+
+def test_check_provider_egress_empty_provider_list_defaults_to_supported_providers() -> None:
+    calls: list[ExternalRequest] = []
+
+    def fake_transport(request: ExternalRequest) -> ExternalResponse:
+        calls.append(request)
+        return ExternalResponse(status_code=401, payload={})
+
+    result = check_provider_egress({"providers": []}, transport=fake_transport)
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert set(result["checks"]["providers"]) == {OPENDART_PROVIDER, NAVER_PROVIDER}
+    assert len(calls) == 2
+
+
+def test_check_provider_egress_treats_http_error_as_reachable() -> None:
+    class FakeHttpError(Exception):
+        code = 403
+
+    def fake_transport(_request: ExternalRequest) -> ExternalResponse:
+        raise FakeHttpError("forbidden")
+
+    result = check_provider_egress({"provider": OPENDART_PROVIDER}, transport=fake_transport)
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert result["checks"]["providers"] == {
+        OPENDART_PROVIDER: {
+            "reachable": True,
+            "endpoint": "https://opendart.fss.or.kr/api/list.json",
+            "status_code": 403,
+            "note": "Provider endpoint returned an HTTP error response.",
+        }
+    }
+
+
+def test_check_provider_egress_reports_network_failure_without_secret_values() -> None:
+    def fake_transport(_request: ExternalRequest) -> ExternalResponse:
+        raise TimeoutError("network timeout with no credentials")
+
+    result = check_provider_egress({"providers": [NAVER_PROVIDER]}, transport=fake_transport)
+
+    assert result["ok"] is False
+    assert result["checks"]["providers"][NAVER_PROVIDER] == {
+        "reachable": False,
+        "endpoint": "https://openapi.naver.com/v1/search/news.json",
+        "status_code": None,
+        "error_code": "TimeoutError",
+        "note": "Provider endpoint could not be reached from this runtime.",
+    }
+    assert result["issues"] == [
+        {
+            "code": "provider_egress_unreachable",
+            "provider": NAVER_PROVIDER,
+            "endpoint": "https://openapi.naver.com/v1/search/news.json",
+        }
+    ]
+    assert "credentials" not in str(result)
+
+
+def test_check_provider_egress_rejects_unsupported_provider() -> None:
+    result = check_provider_egress({"providers": ["UNKNOWN"]}, transport=lambda _request: None)
+
+    assert result == {
+        "ok": False,
+        "checks": {"providers": {}},
+        "issues": [{"code": "unsupported_provider", "provider": "UNKNOWN"}],
+    }

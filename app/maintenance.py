@@ -5,7 +5,11 @@ from alembic.config import Config
 
 from app.db import get_session_factory
 from app.seed.seed_mock_data import seed_mock_data
-from app.services.ingestion import handle_ingestion_event
+from app.services.ingestion import (
+    check_ingestion_readiness,
+    check_provider_egress,
+    handle_ingestion_event,
+)
 
 
 def handle_maintenance_event(event: dict[str, object]) -> dict[str, object]:
@@ -16,6 +20,10 @@ def handle_maintenance_event(event: dict[str, object]) -> dict[str, object]:
         return migrate()
     if operation == "seed_mock_data":
         return seed()
+    if operation == "check_ingestion_readiness":
+        return check_ingestion_readiness()
+    if operation == "check_provider_egress":
+        return check_provider_egress(event)
     if operation == "ingest_provider_batch":
         return handle_ingestion_event(event)
     return {
@@ -25,6 +33,8 @@ def handle_maintenance_event(event: dict[str, object]) -> dict[str, object]:
             "migrate",
             "seed_mock_data",
             "migrate_and_seed",
+            "check_ingestion_readiness",
+            "check_provider_egress",
             "ingest_provider_batch",
         ],
     }

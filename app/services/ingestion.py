@@ -22,11 +22,20 @@ from app.services.external.clients import (
     NaverNewsClient,
     OpenDartClient,
 )
-from app.services.external.types import ExternalApiResult
+from app.services.external.transport import urllib_transport
+from app.services.external.types import ExternalApiResult, ExternalRequest, ExternalTransport
 from app.services.ingestion_idempotency import IngestionIdempotencyService
 
 
 SUPPORTED_PROVIDERS = (OPENDART_PROVIDER, NAVER_PROVIDER)
+MAX_TICKERS_PER_BATCH = 20
+MAX_OPENDART_PAGE_COUNT = 100
+MAX_NAVER_NEWS_DISPLAY = 50
+PROVIDER_EGRESS_ENDPOINTS = {
+    OPENDART_PROVIDER: "https://opendart.fss.or.kr/api/list.json",
+    NAVER_PROVIDER: "https://openapi.naver.com/v1/search/news.json",
+}
+PROVIDER_EGRESS_TIMEOUT_SECONDS = 3.0
 
 
 class PayloadArchiver(Protocol):
@@ -147,6 +156,14 @@ class ProviderIngestionService:
             }
         if not request.tickers:
             return {"ok": False, "error": "tickers_required"}
+        limit_violations = _request_limit_violations(request)
+        if limit_violations:
+            return {
+                "ok": False,
+                "error": "request_limit_exceeded",
+                "violations": limit_violations,
+                "limits": _request_limits(),
+            }
 
         results = [self._run_ticker(request=request, ticker=ticker) for ticker in request.tickers]
         failed = [item for item in results if item.status in {"failed", "partial_failed"}]
@@ -441,26 +458,214 @@ def handle_ingestion_event(event: dict[str, object]) -> dict[str, Any]:
     return result
 
 
+def check_ingestion_readiness(settings: Settings | None = None) -> dict[str, Any]:
+    base_settings = settings or get_settings()
+    issues: list[dict[str, str]] = []
+    secret_load_error: dict[str, str] | None = None
+    hydrated_settings = base_settings
+
+    if base_settings.external_api_secret_arn:
+        try:
+            hydrated_settings = hydrate_external_api_settings(base_settings)
+        except Exception as exc:
+            secret_load_error = {
+                "code": exc.__class__.__name__,
+                "message": "External API secret could not be loaded.",
+            }
+            issues.append(
+                {
+                    "code": "external_api_secret_load_failed",
+                    "field": "EXTERNAL_API_SECRET_ARN",
+                }
+            )
+    else:
+        issues.append(
+            {
+                "code": "missing_external_api_secret_arn",
+                "field": "EXTERNAL_API_SECRET_ARN",
+            }
+        )
+
+    if not hydrated_settings.ingestion_raw_bucket:
+        issues.append(
+            {
+                "code": "missing_ingestion_raw_bucket",
+                "field": "INGESTION_RAW_BUCKET",
+            }
+        )
+    if not hydrated_settings.opendart_api_key:
+        issues.append(
+            {
+                "code": "missing_provider_credential",
+                "field": "OPENDART_API_KEY",
+            }
+        )
+    if not hydrated_settings.naver_client_id:
+        issues.append(
+            {
+                "code": "missing_provider_credential",
+                "field": "NAVER_CLIENT_ID",
+            }
+        )
+    if not hydrated_settings.naver_client_secret:
+        issues.append(
+            {
+                "code": "missing_provider_credential",
+                "field": "NAVER_CLIENT_SECRET",
+            }
+        )
+
+    return {
+        "ok": not issues,
+        "checks": {
+            "raw_archive": {
+                "configured": bool(hydrated_settings.ingestion_raw_bucket),
+            },
+            "external_api_secret": {
+                "configured": bool(base_settings.external_api_secret_arn),
+                "loaded": bool(base_settings.external_api_secret_arn) and secret_load_error is None,
+                "error": secret_load_error,
+            },
+            "providers": {
+                OPENDART_PROVIDER: {
+                    "api_key_configured": bool(hydrated_settings.opendart_api_key),
+                },
+                NAVER_PROVIDER: {
+                    "client_id_configured": bool(hydrated_settings.naver_client_id),
+                    "client_secret_configured": bool(hydrated_settings.naver_client_secret),
+                },
+            },
+            "network": {
+                "outbound_internet_egress_verified": False,
+                "note": "This check does not call external provider APIs.",
+            },
+        },
+        "issues": issues,
+    }
+
+
+def check_provider_egress(
+    event: dict[str, object] | None = None,
+    *,
+    transport: ExternalTransport | None = None,
+) -> dict[str, Any]:
+    selected_providers, provider_issues = _provider_egress_selection(event or {})
+    checks: dict[str, dict[str, Any]] = {}
+    issues = list(provider_issues)
+    transport_fn = transport or urllib_transport
+
+    for provider in selected_providers:
+        endpoint = PROVIDER_EGRESS_ENDPOINTS[provider]
+        check = _check_provider_endpoint_egress(
+            provider=provider,
+            endpoint=endpoint,
+            transport=transport_fn,
+        )
+        checks[provider] = check
+        if not check["reachable"]:
+            issues.append(
+                {
+                    "code": "provider_egress_unreachable",
+                    "provider": provider,
+                    "endpoint": endpoint,
+                }
+            )
+
+    return {
+        "ok": not issues,
+        "checks": {
+            "providers": checks,
+        },
+        "issues": issues,
+    }
+
+
+def _provider_egress_selection(event: dict[str, object]) -> tuple[list[str], list[dict[str, str]]]:
+    raw_providers = event.get("providers") or event.get("provider")
+    if raw_providers is None:
+        return list(SUPPORTED_PROVIDERS), []
+    if isinstance(raw_providers, str):
+        requested = [raw_providers]
+    elif isinstance(raw_providers, list):
+        requested = [str(provider) for provider in raw_providers]
+    else:
+        return [], [{"code": "invalid_provider_selection", "field": "providers"}]
+
+    selected: list[str] = []
+    issues: list[dict[str, str]] = []
+    for provider in requested:
+        if provider not in SUPPORTED_PROVIDERS:
+            issues.append(
+                {
+                    "code": "unsupported_provider",
+                    "provider": provider,
+                }
+            )
+            continue
+        if provider not in selected:
+            selected.append(provider)
+    return selected, issues
+
+
+def _check_provider_endpoint_egress(
+    *,
+    provider: str,
+    endpoint: str,
+    transport: ExternalTransport,
+) -> dict[str, Any]:
+    request = ExternalRequest(
+        method="GET",
+        url=endpoint,
+        params={},
+        timeout_seconds=PROVIDER_EGRESS_TIMEOUT_SECONDS,
+    )
+    try:
+        response = transport(request)
+        return {
+            "reachable": True,
+            "endpoint": endpoint,
+            "status_code": response.status_code,
+            "note": "Provider endpoint returned an HTTP response.",
+        }
+    except Exception as exc:
+        status_code = getattr(exc, "code", None)
+        if isinstance(status_code, int):
+            return {
+                "reachable": True,
+                "endpoint": endpoint,
+                "status_code": status_code,
+                "note": "Provider endpoint returned an HTTP error response.",
+            }
+        return {
+            "reachable": False,
+            "endpoint": endpoint,
+            "status_code": None,
+            "error_code": exc.__class__.__name__,
+            "note": "Provider endpoint could not be reached from this runtime.",
+        }
+
+
 def hydrate_external_api_settings(settings: Settings) -> Settings:
     if settings.opendart_api_key and settings.naver_client_id and settings.naver_client_secret:
         return settings
     if not settings.external_api_secret_arn:
         return settings
     secret = load_secret_json(settings.external_api_secret_arn)
-    return Settings(
-        **settings.model_dump(),
-        OPENDART_API_KEY=(
-            settings.opendart_api_key
-            or _first_secret_value(secret, "OPENDART_API_KEY", "opendart_api_key")
-        ),
-        NAVER_CLIENT_ID=(
-            settings.naver_client_id
-            or _first_secret_value(secret, "NAVER_CLIENT_ID", "naver_client_id")
-        ),
-        NAVER_CLIENT_SECRET=(
-            settings.naver_client_secret
-            or _first_secret_value(secret, "NAVER_CLIENT_SECRET", "naver_client_secret")
-        ),
+    return settings.model_copy(
+        update={
+            "opendart_api_key": (
+                settings.opendart_api_key
+                or _first_secret_value(secret, "OPENDART_API_KEY", "opendart_api_key")
+            ),
+            "naver_client_id": (
+                settings.naver_client_id
+                or _first_secret_value(secret, "NAVER_CLIENT_ID", "naver_client_id")
+            ),
+            "naver_client_secret": (
+                settings.naver_client_secret
+                or _first_secret_value(secret, "NAVER_CLIENT_SECRET", "naver_client_secret")
+            ),
+        }
     )
 
 
@@ -606,6 +811,27 @@ def _positive_int(value: object, *, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _request_limit_violations(request: ProviderIngestionRequest) -> list[dict[str, int | str]]:
+    checks = (
+        ("tickers", len(request.tickers), MAX_TICKERS_PER_BATCH),
+        ("page_count", request.page_count, MAX_OPENDART_PAGE_COUNT),
+        ("news_display", request.news_display, MAX_NAVER_NEWS_DISPLAY),
+    )
+    return [
+        {"field": field, "value": value, "max": max_value}
+        for field, value, max_value in checks
+        if value > max_value
+    ]
+
+
+def _request_limits() -> dict[str, int]:
+    return {
+        "max_tickers": MAX_TICKERS_PER_BATCH,
+        "max_page_count": MAX_OPENDART_PAGE_COUNT,
+        "max_news_display": MAX_NAVER_NEWS_DISPLAY,
+    }
 
 
 def _sha256(value: str) -> str:
