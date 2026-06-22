@@ -76,19 +76,24 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    - `lambda_subnet_ids`
    - `lambda_security_group_ids`
    - `vpc_endpoint_route_table_ids`
+   - `enable_lambda_nat_egress`
+   - `lambda_nat_public_subnet_id`
+   - `lambda_nat_route_subnet_ids`
    - `cors_allowed_origins`
    - `cognito_callback_urls`
-- `cognito_logout_urls`
-- `cognito_hosted_ui_domain_prefix`
-- `amplify_cognito_redirect_uri`
-- `enable_ingestion_scheduler`
-- `ingestion_schedule_provider`
-- `ingestion_schedule_tickers`
+   - `cognito_logout_urls`
+   - `cognito_hosted_ui_domain_prefix`
+   - `amplify_cognito_redirect_uri`
+   - `enable_ingestion_scheduler`
+   - `ingestion_schedule_provider`
+   - `ingestion_schedule_tickers`
 
    For the first backend-only deployment, keep `enable_amplify = false`. Enable
    it only after the target GitHub organization approves the Amplify GitHub App.
    Also keep `enable_ingestion_scheduler = false` until provider API credentials
    are stored in Secrets Manager and the target ticker list is reviewed.
+   Keep `enable_lambda_nat_egress = false` until live provider ingestion is
+   approved because NAT Gateway creates hourly and data processing charges.
 
 4. If deploying Amplify through Terraform, install the AWS Amplify GitHub App for
    the target region/account and provide a GitHub personal access token through
@@ -230,6 +235,33 @@ Amplify Hosted UI callback setup is intentionally two-step:
    `cognito_logout_urls`, set `amplify_cognito_redirect_uri` to the hosted
    callback URL, and apply again.
 
+## Lambda Provider Egress
+
+Lambda functions attached to a VPC do not receive public IP addresses, even
+when their subnet route table has an Internet Gateway route. Real OpenDART and
+Naver ingestion therefore needs an explicit outbound path.
+
+Terraform can create a NAT Gateway path for the Lambda subnets only when all
+three values are supplied:
+
+```hcl
+enable_lambda_nat_egress    = true
+lambda_nat_public_subnet_id = "subnet-public-for-nat"
+lambda_nat_route_subnet_ids = ["subnet-lambda-a", "subnet-lambda-b"]
+```
+
+The public NAT subnet must keep a route to the VPC Internet Gateway. The route
+subnet IDs are associated with a Terraform-managed private route table whose
+default route points to the NAT Gateway. For the current dev account, choose a
+public subnet that is not in `lambda_nat_route_subnet_ids` so the NAT Gateway
+itself keeps direct Internet Gateway egress. Do not include
+`lambda_nat_public_subnet_id` in `lambda_nat_route_subnet_ids`; Terraform
+preconditions fail the plan when those inputs overlap.
+
+Keep this disabled unless a live provider ingestion smoke test is scheduled.
+When enabled, NAT Gateway hourly and data processing costs continue until the
+toggle is set back to `false` and Terraform is applied.
+
 ## RDS And RDS Proxy
 
 The RDS module creates PostgreSQL when `db_subnet_ids` are provided. RDS Proxy is
@@ -260,6 +292,37 @@ Otherwise, it builds a PostgreSQL URL from `DATABASE_HOST` plus the secret's
 
 ## Provider Ingestion
 
+Before running a provider job or enabling the scheduler, call the readiness
+operation from the same Lambda maintenance handler:
+
+```json
+{
+  "stockbrief_operation": "check_ingestion_readiness"
+}
+```
+
+The readiness response reports whether `INGESTION_RAW_BUCKET`,
+`EXTERNAL_API_SECRET_ARN`, `OPENDART_API_KEY`, `NAVER_CLIENT_ID`, and
+`NAVER_CLIENT_SECRET` are configured. It reports presence only and does not
+return secret values. It also does not call external provider APIs, so outbound
+internet egress must still be verified separately before scheduled ingestion is
+enabled.
+
+After readiness passes, verify outbound provider egress from the Lambda runtime:
+
+```json
+{
+  "stockbrief_operation": "check_provider_egress",
+  "providers": ["OpenDART", "NAVER_NEWS"]
+}
+```
+
+This operation sends unauthenticated HTTPS checks to the provider endpoints.
+HTTP responses such as `401`, `403`, or provider validation errors still prove
+network reachability; DNS, connection, and timeout failures keep
+`outbound_internet_egress_verified` effectively false for scheduler enable
+purposes. It does not send API keys or client secrets.
+
 The backend Lambda can run provider ingestion through the same handler used for
 maintenance events:
 
@@ -274,7 +337,12 @@ maintenance events:
 
 Supported providers are `OpenDART` and `NAVER_NEWS`. Each ticker run writes an
 `ingestion_runs` row before provider access, computes a stable request hash, and
-skips duplicate successful runs as `replayed`. Available provider responses are
+skips duplicate successful runs as `replayed`. The replay check uses the
+normalized `input_hash`, so the same provider/ticker/source date/request
+parameter set is replayed even if a later manual request uses a different
+explicit `run_id`. A partial unique index on active or succeeded `input_hash`
+values prevents concurrent first-run workers from creating multiple active
+ledger rows for the same normalized input. Available provider responses are
 stored in RDS using these first baseline upsert keys:
 
 - OpenDART disclosures: `provider + receipt_no`
@@ -304,6 +372,29 @@ objects, and DLQ behavior, then enable the scheduler in a separate reviewed PR.
 If Lambda runs in private subnets, S3 raw archive requires the S3 Gateway VPC
 Endpoint. Real external provider calls still require an outbound internet path
 such as NAT or another approved egress design before enabling scheduled jobs.
+
+### Scheduler Enable Gate
+
+Do not set `enable_ingestion_scheduler = true` until all of these checks are
+complete and recorded in the PR body:
+
+- `OPENDART_API_KEY`, `NAVER_CLIENT_ID`, and `NAVER_CLIENT_SECRET` are populated
+  in Secrets Manager outside git.
+- A manual `ingest_provider_batch` run succeeds for the target provider and
+  ticker list without `missing_api_key` fallback.
+- Lambda outbound internet egress to the selected provider is verified with
+  `check_provider_egress` from the deployed Lambda environment. S3 Gateway VPC
+  Endpoint only covers raw archive writes to S3; it does not provide internet
+  egress for OpenDART or Naver.
+  If VPC Lambda egress is required, enable `enable_lambda_nat_egress` only for
+  the smoke window and turn it off after the evidence is collected.
+- S3 raw archive objects are written for the manual run and the SQS DLQ remains
+  empty after the smoke test.
+- The schedule expression, provider, and ticker list are reviewed for cost,
+  rate-limit, and data freshness expectations.
+
+If any check fails, keep the scheduler disabled and run ingestion manually until
+the missing credential, network egress, or provider behavior is fixed.
 
 ## AgentCore Runtime
 
@@ -368,6 +459,86 @@ Non-secret runtime values remain Lambda or Amplify environment variables:
 - `NEXT_PUBLIC_COGNITO_APP_CLIENT_ID`
 - `NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN`
 - `NEXT_PUBLIC_COGNITO_REDIRECT_URI`
+
+### External API Credential Update Runbook
+
+Use this runbook after Terraform creates `stockbrief-dev/external-api` and
+before running live OpenDART or NAVER ingestion. Never commit real API keys,
+tokens, or copied secret payloads.
+
+1. Resolve the Terraform-managed external API secret ARN:
+
+   ```bash
+   cd infra/terraform
+   terraform output -raw external_api_secret_arn
+   ```
+
+2. Create a local temporary JSON payload outside the repository:
+
+   ```json
+   {
+     "OPENDART_API_KEY": "REPLACE_WITH_REAL_VALUE",
+     "NAVER_CLIENT_ID": "REPLACE_WITH_REAL_VALUE",
+     "NAVER_CLIENT_SECRET": "REPLACE_WITH_REAL_VALUE",
+     "KRX_DATA_PATH": ""
+   }
+   ```
+
+   Store it at a temporary path such as
+   `/tmp/stockbrief-external-api-secret.json`. Delete the file after the update.
+
+3. Update the current Secrets Manager value without printing the payload:
+
+   ```bash
+   aws secretsmanager update-secret \
+     --secret-id "$(terraform output -raw external_api_secret_arn)" \
+     --secret-string file:///tmp/stockbrief-external-api-secret.json \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+   ```
+
+4. Verify metadata only. Do not use `get-secret-value` in shared logs or PR
+   evidence because it prints secret material:
+
+   ```bash
+   aws secretsmanager describe-secret \
+     --secret-id "$(terraform output -raw external_api_secret_arn)" \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+   ```
+
+5. Delete the temporary payload file after the update:
+
+   ```bash
+   rm /tmp/stockbrief-external-api-secret.json
+   ```
+
+6. Run one manual Lambda ingestion per provider before enabling any scheduler.
+   Replace `YYYY-MM-DD` with the business date you want to verify:
+
+   ```bash
+   aws lambda invoke \
+     --function-name stockbrief-dev-api \
+     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"OpenDART","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
+     --cli-binary-format raw-in-base64-out \
+     /tmp/stockbrief-opendart-ingest-response.json \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+
+   aws lambda invoke \
+     --function-name stockbrief-dev-api \
+     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"NAVER_NEWS","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
+     --cli-binary-format raw-in-base64-out \
+     /tmp/stockbrief-naver-ingest-response.json \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+   ```
+
+7. Treat credentials as present only after the Lambda responses no longer report
+   `missing_api_key` for `OPENDART_API_KEY` or
+   `NAVER_CLIENT_ID/NAVER_CLIENT_SECRET`. Credential presence is necessary but
+   not sufficient for live ingestion; the Lambda private subnet must also have
+   outbound internet egress to reach OpenDART and NAVER.
 
 ## Cognito And API Gateway JWT Authorizer
 
