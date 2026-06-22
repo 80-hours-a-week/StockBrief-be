@@ -422,6 +422,16 @@ def test_authenticated_chat_persists_session_and_messages(seeded_session: Sessio
             assistant_message.citations[0]
         )
         assert any(citation["published_at"] for citation in assistant_message.citations)
+        assert all(
+            isinstance(citation["published_at"], str)
+            for citation in assistant_message.citations
+            if citation["published_at"] is not None
+        )
         assert any(citation["published_at"] for citation in payload["data"]["citations"])
+        assert all(
+            isinstance(citation["published_at"], str)
+            for citation in payload["data"]["citations"]
+            if citation["published_at"] is not None
+        )
     finally:
         app.dependency_overrides.clear()
