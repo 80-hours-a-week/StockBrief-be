@@ -252,8 +252,10 @@ lambda_nat_route_subnet_ids = ["subnet-lambda-a", "subnet-lambda-b"]
 The public NAT subnet must keep a route to the VPC Internet Gateway. The route
 subnet IDs are associated with a Terraform-managed private route table whose
 default route points to the NAT Gateway. For the current dev account, choose a
-public subnet that is not in `lambda_subnet_ids` so the NAT Gateway itself keeps
-direct Internet Gateway egress.
+public subnet that is not in `lambda_nat_route_subnet_ids` so the NAT Gateway
+itself keeps direct Internet Gateway egress. Do not include
+`lambda_nat_public_subnet_id` in `lambda_nat_route_subnet_ids`; Terraform
+preconditions fail the plan when those inputs overlap.
 
 Keep this disabled unless a live provider ingestion smoke test is scheduled.
 When enabled, NAT Gateway hourly and data processing costs continue until the
