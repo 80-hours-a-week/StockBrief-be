@@ -172,6 +172,9 @@ def test_github_deploy_role_policy_can_refresh_ingestion_and_nat_resources() -> 
     bootstrap_script = (REPOSITORY_ROOT / "scripts/bootstrap_github_oidc.sh").read_text(
         encoding="utf-8"
     )
+    deployment_doc = (
+        REPOSITORY_ROOT / "docs/engineering/DEPLOYMENT_BOOTSTRAP.md"
+    ).read_text(encoding="utf-8")
 
     for action in [
         "kms:DescribeKey",
@@ -188,7 +191,10 @@ def test_github_deploy_role_policy_can_refresh_ingestion_and_nat_resources() -> 
         "ec2:CreateNatGateway",
         "ec2:DescribeNatGateways",
         "ec2:AllocateAddress",
+        "ec2:DescribeAddressesAttribute",
         "ec2:CreateRouteTable",
         "ec2:AssociateRouteTable",
     ]:
         assert action in bootstrap_script
+    assert "EIP address" in deployment_doc
+    assert "attributes/route table state" in deployment_doc
