@@ -419,7 +419,7 @@ class ProviderIngestionService:
             if not source_url:
                 counts["skipped"] += 1
                 continue
-            title = str(item.get("title") or source_url).strip()
+            title = _clean_provider_text(item.get("title")) or source_url
             published_at = _parse_rfc2822(item.get("pubDate"))
             source_document = upsert_source_document(
                 self.session,

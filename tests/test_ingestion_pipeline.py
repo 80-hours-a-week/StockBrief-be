@@ -353,10 +353,10 @@ def test_naver_ingestion_upserts_news_and_source_documents(
             payload={
                 "items": [
                     {
-                        "title": "삼성전자 신규 공시 분석",
+                        "title": "<b>삼성전자</b> 신규 &amp; 공시 분석",
                         "originallink": "https://news.example/articles/1",
                         "link": "https://news.example/articles/1",
-                        "description": "테스트 뉴스",
+                        "description": "<b>테스트</b> &amp; 뉴스",
                         "pubDate": "Thu, 18 Jun 2026 09:00:00 +0900",
                     }
                 ]
@@ -390,7 +390,8 @@ def test_naver_ingestion_upserts_news_and_source_documents(
         select(NewsItem).where(NewsItem.source_url == "https://news.example/articles/1")
     ).one()
     assert news_item.provider == NAVER_PROVIDER
-    assert news_item.summary == "테스트 뉴스"
+    assert news_item.title == "삼성전자 신규 & 공시 분석"
+    assert news_item.summary == "<b>테스트</b> &amp; 뉴스"
 
     source_document = seeded_session.scalars(
         select(SourceDocument).where(
@@ -399,6 +400,7 @@ def test_naver_ingestion_upserts_news_and_source_documents(
         )
     ).one()
     assert source_document.source_type == "news"
+    assert source_document.title == "삼성전자 신규 & 공시 분석"
 
     evidence_chunk = seeded_session.scalars(
         select(EvidenceChunk).where(
@@ -407,7 +409,7 @@ def test_naver_ingestion_upserts_news_and_source_documents(
     ).one()
     assert evidence_chunk.source_document_id == source_document.id
     assert evidence_chunk.evidence_type == "news"
-    assert evidence_chunk.chunk_text == "테스트 뉴스"
+    assert evidence_chunk.chunk_text == "테스트 & 뉴스"
     assert evidence_chunk.source_url == "https://news.example/articles/1"
 
 
