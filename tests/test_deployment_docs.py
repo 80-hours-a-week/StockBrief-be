@@ -1,3 +1,5 @@
+import json
+import re
 from pathlib import Path
 
 
@@ -103,6 +105,30 @@ def _markdown_section(markdown: str, heading: str) -> str:
     return markdown[start:next_heading]
 
 
+def _bootstrap_policy_document(script: str) -> dict[str, object]:
+    match = re.search(
+        r'cat >"\$\{tmpdir\}/deploy-policy\.json" <<POLICY\n(?P<policy>.*?)\nPOLICY',
+        script,
+        re.DOTALL,
+    )
+    assert match is not None
+    policy = json.loads(match.group("policy"))
+    assert isinstance(policy, dict)
+    return policy
+
+
+def _statement_actions(policy: dict[str, object], sid: str) -> set[str]:
+    statements = policy["Statement"]
+    assert isinstance(statements, list)
+    for statement in statements:
+        assert isinstance(statement, dict)
+        if statement.get("Sid") == sid:
+            actions = statement["Action"]
+            assert isinstance(actions, list)
+            return {str(action) for action in actions}
+    raise AssertionError(f"Policy statement not found: {sid}")
+
+
 def test_ingestion_scheduler_enable_gate_documents_live_provider_prerequisites() -> None:
     terraform_readme = (REPOSITORY_ROOT / "infra/terraform/README.md").read_text(
         encoding="utf-8"
@@ -172,6 +198,8 @@ def test_github_deploy_role_policy_can_refresh_ingestion_and_nat_resources() -> 
     bootstrap_script = (REPOSITORY_ROOT / "scripts/bootstrap_github_oidc.sh").read_text(
         encoding="utf-8"
     )
+    deploy_policy = _bootstrap_policy_document(bootstrap_script)
+    deployment_actions = _statement_actions(deploy_policy, "DevBackendDeployment")
     deployment_doc = (
         REPOSITORY_ROOT / "docs/engineering/DEPLOYMENT_BOOTSTRAP.md"
     ).read_text(encoding="utf-8")
@@ -195,6 +223,8 @@ def test_github_deploy_role_policy_can_refresh_ingestion_and_nat_resources() -> 
         "ec2:CreateRouteTable",
         "ec2:AssociateRouteTable",
     ]:
-        assert action in bootstrap_script
+        assert action in deployment_actions
+    assert "Terraform refresh" in deployment_doc
+    assert "deploy role" in deployment_doc
     assert "EIP address" in deployment_doc
     assert "attributes/route table state" in deployment_doc
