@@ -2,7 +2,8 @@ locals {
   lambda_nat_egress_inputs_valid = (
     local.managed_networking_enabled &&
     var.lambda_nat_public_subnet_id != "" &&
-    length(var.lambda_nat_route_subnet_ids) > 0
+    length(var.lambda_nat_route_subnet_ids) > 0 &&
+    !contains(var.lambda_nat_route_subnet_ids, var.lambda_nat_public_subnet_id)
   )
   lambda_nat_egress_enabled = var.enable_lambda_nat_egress
 }
@@ -15,7 +16,7 @@ resource "aws_eip" "lambda_nat" {
   lifecycle {
     precondition {
       condition     = local.lambda_nat_egress_inputs_valid
-      error_message = "enable_lambda_nat_egress requires vpc_id, db_subnet_ids, lambda_subnet_ids, lambda_nat_public_subnet_id, and at least one lambda_nat_route_subnet_ids value."
+      error_message = "enable_lambda_nat_egress requires vpc_id, db_subnet_ids, lambda_subnet_ids, lambda_nat_public_subnet_id, at least one lambda_nat_route_subnet_ids value, and a NAT public subnet that is not also routed through the NAT route table."
     }
   }
 
@@ -35,7 +36,7 @@ resource "aws_nat_gateway" "lambda_egress" {
   lifecycle {
     precondition {
       condition     = local.lambda_nat_egress_inputs_valid
-      error_message = "enable_lambda_nat_egress requires a public NAT subnet and route subnet IDs."
+      error_message = "enable_lambda_nat_egress requires a public NAT subnet that is not included in lambda_nat_route_subnet_ids."
     }
   }
 
