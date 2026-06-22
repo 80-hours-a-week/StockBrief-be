@@ -31,8 +31,23 @@ payloads into PR comments, shared logs, or issue comments.
 
 - `enable_ingestion_scheduler` remains `false`.
 - External API credentials are stored in Secrets Manager outside git.
-- Lambda has outbound internet egress for OpenDART and NAVER. An S3 Gateway
-  endpoint only covers raw archive writes to S3.
+- Lambda has outbound internet egress for OpenDART and NAVER. Verify it from the
+  Lambda runtime after the readiness check:
+
+  ```bash
+  aws lambda invoke \
+    --function-name stockbrief-dev-api \
+    --payload '{"stockbrief_operation":"check_provider_egress","providers":["OpenDART","NAVER_NEWS"]}' \
+    --cli-binary-format raw-in-base64-out \
+    /tmp/stockbrief-provider-egress-response.json \
+    --profile stockbrief-dev \
+    --region ap-northeast-2
+  ```
+
+  The operation does not send API keys or client secrets. HTTP responses such as
+  `401`, `403`, or provider validation errors still prove network reachability.
+  DNS, connection, and timeout failures mean provider egress is not ready. An
+  S3 Gateway endpoint only covers raw archive writes to S3.
 - RDS is available and the latest migration has run:
 
   ```bash
@@ -208,7 +223,7 @@ Do not enable EventBridge Scheduler until all conditions are true:
   archive, DLQ, and CloudWatch logs have been checked.
 - Provider rate limits, ticker count, and expected execution frequency have
   been reviewed.
-- Lambda outbound internet egress is confirmed.
+- Lambda outbound internet egress is confirmed by `check_provider_egress`.
 - The scheduler change is reviewed in a separate PR.
 
 If any check fails, keep `enable_ingestion_scheduler = false`, record the

@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.orm import Disclosure, IngestionRun, NewsItem, SourceDocument
 from app.services.external.clients import NAVER_PROVIDER, OPENDART_PROVIDER
-from app.services.external.types import ExternalApiResult
+from app.services.external.types import ExternalApiResult, ExternalRequest, ExternalResponse
 from app.services import ingestion as ingestion_module
 from app.services.ingestion import (
     check_ingestion_readiness,
+    check_provider_egress,
     NoopPayloadArchiver,
     ProviderIngestionRequest,
     ProviderIngestionService,
@@ -578,3 +579,91 @@ def test_check_ingestion_readiness_returns_secret_load_error(monkeypatch) -> Non
     assert {"code": "external_api_secret_load_failed", "field": "EXTERNAL_API_SECRET_ARN"} in result[
         "issues"
     ]
+
+
+def test_check_provider_egress_reports_reachable_provider_endpoints() -> None:
+    calls: list[ExternalRequest] = []
+
+    def fake_transport(request: ExternalRequest) -> ExternalResponse:
+        calls.append(request)
+        return ExternalResponse(status_code=401, payload={})
+
+    result = check_provider_egress(transport=fake_transport)
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert result["checks"]["providers"][OPENDART_PROVIDER]["reachable"] is True
+    assert result["checks"]["providers"][NAVER_PROVIDER]["reachable"] is True
+    assert [call.method for call in calls] == ["GET", "GET"]
+    assert all(call.headers == {} for call in calls)
+    assert all(call.timeout_seconds == 3.0 for call in calls)
+
+
+def test_check_provider_egress_empty_provider_list_defaults_to_supported_providers() -> None:
+    calls: list[ExternalRequest] = []
+
+    def fake_transport(request: ExternalRequest) -> ExternalResponse:
+        calls.append(request)
+        return ExternalResponse(status_code=401, payload={})
+
+    result = check_provider_egress({"providers": []}, transport=fake_transport)
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert set(result["checks"]["providers"]) == {OPENDART_PROVIDER, NAVER_PROVIDER}
+    assert len(calls) == 2
+
+
+def test_check_provider_egress_treats_http_error_as_reachable() -> None:
+    class FakeHttpError(Exception):
+        code = 403
+
+    def fake_transport(_request: ExternalRequest) -> ExternalResponse:
+        raise FakeHttpError("forbidden")
+
+    result = check_provider_egress({"provider": OPENDART_PROVIDER}, transport=fake_transport)
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert result["checks"]["providers"] == {
+        OPENDART_PROVIDER: {
+            "reachable": True,
+            "endpoint": "https://opendart.fss.or.kr/api/list.json",
+            "status_code": 403,
+            "note": "Provider endpoint returned an HTTP error response.",
+        }
+    }
+
+
+def test_check_provider_egress_reports_network_failure_without_secret_values() -> None:
+    def fake_transport(_request: ExternalRequest) -> ExternalResponse:
+        raise TimeoutError("network timeout with no credentials")
+
+    result = check_provider_egress({"providers": [NAVER_PROVIDER]}, transport=fake_transport)
+
+    assert result["ok"] is False
+    assert result["checks"]["providers"][NAVER_PROVIDER] == {
+        "reachable": False,
+        "endpoint": "https://openapi.naver.com/v1/search/news.json",
+        "status_code": None,
+        "error_code": "TimeoutError",
+        "note": "Provider endpoint could not be reached from this runtime.",
+    }
+    assert result["issues"] == [
+        {
+            "code": "provider_egress_unreachable",
+            "provider": NAVER_PROVIDER,
+            "endpoint": "https://openapi.naver.com/v1/search/news.json",
+        }
+    ]
+    assert "credentials" not in str(result)
+
+
+def test_check_provider_egress_rejects_unsupported_provider() -> None:
+    result = check_provider_egress({"providers": ["UNKNOWN"]}, transport=lambda _request: None)
+
+    assert result == {
+        "ok": False,
+        "checks": {"providers": {}},
+        "issues": [{"code": "unsupported_provider", "provider": "UNKNOWN"}],
+    }
