@@ -169,6 +169,8 @@ def test_lambda_nat_egress_is_toggleable_and_disabled_by_default() -> None:
     assert "precondition" in egress_tf
     assert "enable_lambda_nat_egress     = false" in dev_tfvars
     assert "NAT Gateway hourly and data processing costs" in terraform_readme
+    assert "Do not include" in terraform_readme
+    assert "`lambda_nat_public_subnet_id` in `lambda_nat_route_subnet_ids`" in terraform_readme
     assert "turn it off after the evidence is collected" in terraform_readme
     assert "remove the NAT Gateway and EIP" in deployment_doc
 
