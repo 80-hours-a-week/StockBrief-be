@@ -275,6 +275,21 @@ return secret values. It also does not call external provider APIs, so outbound
 internet egress must still be verified separately before scheduled ingestion is
 enabled.
 
+After readiness passes, verify outbound provider egress from the Lambda runtime:
+
+```json
+{
+  "stockbrief_operation": "check_provider_egress",
+  "providers": ["OpenDART", "NAVER_NEWS"]
+}
+```
+
+This operation sends unauthenticated HTTPS checks to the provider endpoints.
+HTTP responses such as `401`, `403`, or provider validation errors still prove
+network reachability; DNS, connection, and timeout failures keep
+`outbound_internet_egress_verified` effectively false for scheduler enable
+purposes. It does not send API keys or client secrets.
+
 The backend Lambda can run provider ingestion through the same handler used for
 maintenance events:
 
@@ -329,9 +344,10 @@ complete and recorded in the PR body:
   in Secrets Manager outside git.
 - A manual `ingest_provider_batch` run succeeds for the target provider and
   ticker list without `missing_api_key` fallback.
-- Lambda outbound internet egress to the selected provider is verified from the
-  deployed Lambda environment. S3 Gateway VPC Endpoint only covers raw archive
-  writes to S3; it does not provide internet egress for OpenDART or Naver.
+- Lambda outbound internet egress to the selected provider is verified with
+  `check_provider_egress` from the deployed Lambda environment. S3 Gateway VPC
+  Endpoint only covers raw archive writes to S3; it does not provide internet
+  egress for OpenDART or Naver.
 - S3 raw archive objects are written for the manual run and the SQS DLQ remains
   empty after the smoke test.
 - The schedule expression, provider, and ticker list are reviewed for cost,

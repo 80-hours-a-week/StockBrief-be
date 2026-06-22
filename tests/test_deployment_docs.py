@@ -87,6 +87,7 @@ def test_ingestion_scheduler_enable_gate_documents_live_provider_prerequisites()
     assert "Scheduler Enable Gate" in scheduler_gate
     assert "Secrets Manager" in scheduler_gate
     assert "ingest_provider_batch" in scheduler_gate
+    assert "check_provider_egress" in scheduler_gate
     assert "outbound internet egress" in scheduler_gate
     assert "S3 raw archive" in scheduler_gate
     assert "DLQ" in scheduler_gate
@@ -108,6 +109,9 @@ def test_terraform_readme_documents_external_api_secret_update_runbook() -> None
     assert "aws secretsmanager describe-secret" in terraform_readme
     assert "Do not use `get-secret-value`" in terraform_readme
     assert "aws lambda invoke" in terraform_readme
+    assert '"stockbrief_operation": "check_provider_egress"' in terraform_readme
+    assert '"providers": ["OpenDART", "NAVER_NEWS"]' in terraform_readme
+    assert "does not send API keys or client secrets" in terraform_readme
     assert '"provider":"OpenDART"' in terraform_readme
     assert '"provider":"NAVER_NEWS"' in terraform_readme
     assert '"source_date":"YYYY-MM-DD"' in terraform_readme

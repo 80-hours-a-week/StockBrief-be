@@ -18,6 +18,10 @@ def test_ingestion_operations_runbook_exists_and_covers_manual_smoke() -> None:
     assert "terraform output ingestion_dlq_url" in runbook
     assert "terraform output external_api_secret_arn" in runbook
     assert "enable_ingestion_scheduler" in runbook
+    assert '"stockbrief_operation":"check_provider_egress"' in runbook
+    assert '"providers":["OpenDART","NAVER_NEWS"]' in runbook
+    assert "does not send API keys or client secrets" in runbook
+    assert "DNS, connection, and timeout failures" in runbook
     assert "aws lambda invoke" in runbook
     assert '"stockbrief_operation":"ingest_provider_batch"' in runbook
     assert '"provider":"OpenDART"' in runbook
@@ -58,4 +62,5 @@ def test_ingestion_operations_runbook_keeps_secret_handling_safe() -> None:
     assert "not copied into PR comments" in runbook
     assert "do not contain API keys, client secrets, tokens, or database" in runbook
     assert "Lambda outbound internet egress is confirmed" in runbook
+    assert "check_provider_egress" in runbook
     assert "reviewed in a separate PR" in runbook

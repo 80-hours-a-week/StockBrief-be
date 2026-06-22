@@ -22,11 +22,17 @@ from app.services.external.clients import (
     NaverNewsClient,
     OpenDartClient,
 )
-from app.services.external.types import ExternalApiResult
+from app.services.external.transport import urllib_transport
+from app.services.external.types import ExternalApiResult, ExternalRequest, ExternalTransport
 from app.services.ingestion_idempotency import IngestionIdempotencyService
 
 
 SUPPORTED_PROVIDERS = (OPENDART_PROVIDER, NAVER_PROVIDER)
+PROVIDER_EGRESS_ENDPOINTS = {
+    OPENDART_PROVIDER: "https://opendart.fss.or.kr/api/list.json",
+    NAVER_PROVIDER: "https://openapi.naver.com/v1/search/news.json",
+}
+PROVIDER_EGRESS_TIMEOUT_SECONDS = 3.0
 
 
 class PayloadArchiver(Protocol):
@@ -525,6 +531,107 @@ def check_ingestion_readiness(settings: Settings | None = None) -> dict[str, Any
         },
         "issues": issues,
     }
+
+
+def check_provider_egress(
+    event: dict[str, object] | None = None,
+    *,
+    transport: ExternalTransport | None = None,
+) -> dict[str, Any]:
+    selected_providers, provider_issues = _provider_egress_selection(event or {})
+    checks: dict[str, dict[str, Any]] = {}
+    issues = list(provider_issues)
+    transport_fn = transport or urllib_transport
+
+    for provider in selected_providers:
+        endpoint = PROVIDER_EGRESS_ENDPOINTS[provider]
+        check = _check_provider_endpoint_egress(
+            provider=provider,
+            endpoint=endpoint,
+            transport=transport_fn,
+        )
+        checks[provider] = check
+        if not check["reachable"]:
+            issues.append(
+                {
+                    "code": "provider_egress_unreachable",
+                    "provider": provider,
+                    "endpoint": endpoint,
+                }
+            )
+
+    return {
+        "ok": not issues,
+        "checks": {
+            "providers": checks,
+        },
+        "issues": issues,
+    }
+
+
+def _provider_egress_selection(event: dict[str, object]) -> tuple[list[str], list[dict[str, str]]]:
+    raw_providers = event.get("providers") or event.get("provider")
+    if raw_providers is None:
+        return list(SUPPORTED_PROVIDERS), []
+    if isinstance(raw_providers, str):
+        requested = [raw_providers]
+    elif isinstance(raw_providers, list):
+        requested = [str(provider) for provider in raw_providers]
+    else:
+        return [], [{"code": "invalid_provider_selection", "field": "providers"}]
+
+    selected: list[str] = []
+    issues: list[dict[str, str]] = []
+    for provider in requested:
+        if provider not in SUPPORTED_PROVIDERS:
+            issues.append(
+                {
+                    "code": "unsupported_provider",
+                    "provider": provider,
+                }
+            )
+            continue
+        if provider not in selected:
+            selected.append(provider)
+    return selected, issues
+
+
+def _check_provider_endpoint_egress(
+    *,
+    provider: str,
+    endpoint: str,
+    transport: ExternalTransport,
+) -> dict[str, Any]:
+    request = ExternalRequest(
+        method="GET",
+        url=endpoint,
+        params={},
+        timeout_seconds=PROVIDER_EGRESS_TIMEOUT_SECONDS,
+    )
+    try:
+        response = transport(request)
+        return {
+            "reachable": True,
+            "endpoint": endpoint,
+            "status_code": response.status_code,
+            "note": "Provider endpoint returned an HTTP response.",
+        }
+    except Exception as exc:
+        status_code = getattr(exc, "code", None)
+        if isinstance(status_code, int):
+            return {
+                "reachable": True,
+                "endpoint": endpoint,
+                "status_code": status_code,
+                "note": "Provider endpoint returned an HTTP error response.",
+            }
+        return {
+            "reachable": False,
+            "endpoint": endpoint,
+            "status_code": None,
+            "error_code": exc.__class__.__name__,
+            "note": "Provider endpoint could not be reached from this runtime.",
+        }
 
 
 def hydrate_external_api_settings(settings: Settings) -> Settings:
