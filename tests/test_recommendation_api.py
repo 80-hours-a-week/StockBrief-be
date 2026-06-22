@@ -1,4 +1,6 @@
 from collections.abc import Mapping
+from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -6,7 +8,7 @@ from sqlalchemy import event
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.orm import RecommendationScore
+from app.orm import EvidenceChunk, RecommendationScore, SourceDocument
 
 
 PROHIBITED_KOREAN_TERMS = [
@@ -134,6 +136,54 @@ def test_get_stock_score(seeded_api_client: TestClient) -> None:
     assert len(payload["score_components"]) == 8
     assert 0 <= payload["recommendation_score"] <= 100
     assert payload["evidence_level"] == "medium"
+
+
+def test_recommendation_candidate_overlays_live_evidence_freshness(
+    seeded_api_client: TestClient,
+    seeded_session: Session,
+) -> None:
+    published_at = datetime(2026, 6, 22, 6, 16, tzinfo=timezone.utc)
+    source = SourceDocument(
+        ticker="005930",
+        source_type="news",
+        source_name="NAVER_NEWS",
+        source_url="https://news.example/live",
+        external_id="live-news-005930",
+        title="live news evidence",
+        published_at=published_at,
+        fetched_at=published_at,
+        content_hash="live-news-005930",
+        raw_content="{}",
+        metadata_={"provider": "NAVER_NEWS"},
+    )
+    seeded_session.add(source)
+    seeded_session.flush()
+    seeded_session.add(
+        EvidenceChunk(
+            evidence_id="ev_live_news_005930",
+            ticker="005930",
+            source_document_id=source.id,
+            evidence_type="news",
+            chunk_text="live evidence summary",
+            source_url=source.source_url,
+            published_at=published_at,
+            fetched_at=published_at,
+            confidence=Decimal("0.9000"),
+            metadata_={"provider": "NAVER_NEWS"},
+        )
+    )
+    score = seeded_session.scalars(
+        select(RecommendationScore).where(RecommendationScore.ticker == "005930")
+    ).one()
+    score.evidence_count = 1
+    seeded_session.commit()
+
+    response = seeded_api_client.get("/v1/recommendations/candidates/005930")
+
+    assert response.status_code == 200
+    candidate = response.json()
+    assert candidate["evidence_count"] >= 2
+    assert candidate["data_freshness"]["live_evidence_latest_at"] == published_at.isoformat()
 
 
 def test_recommendation_endpoints_do_not_emit_prohibited_korean_terms(
