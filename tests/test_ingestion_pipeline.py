@@ -599,6 +599,21 @@ def test_check_provider_egress_reports_reachable_provider_endpoints() -> None:
     assert all(call.timeout_seconds == 3.0 for call in calls)
 
 
+def test_check_provider_egress_empty_provider_list_defaults_to_supported_providers() -> None:
+    calls: list[ExternalRequest] = []
+
+    def fake_transport(request: ExternalRequest) -> ExternalResponse:
+        calls.append(request)
+        return ExternalResponse(status_code=401, payload={})
+
+    result = check_provider_egress({"providers": []}, transport=fake_transport)
+
+    assert result["ok"] is True
+    assert result["issues"] == []
+    assert set(result["checks"]["providers"]) == {OPENDART_PROVIDER, NAVER_PROVIDER}
+    assert len(calls) == 2
+
+
 def test_check_provider_egress_treats_http_error_as_reachable() -> None:
     class FakeHttpError(Exception):
         code = 403
