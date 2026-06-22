@@ -49,6 +49,9 @@ def test_lambda_packaging_script_targets_backend_repository_root() -> None:
     assert '--platform "${LAMBDA_PLATFORM}"' in script
     assert "--only-binary=:all:" in script
     assert 'cp -R "${API_DIR}/app" "${BUILD_DIR}/app"' in script
+    assert "Deterministic Lambda packages include regular files only" in script
+    assert "symlinks are intentionally excluded" in script
+    assert "find . -type f | LC_ALL=C sort | zip -X" in script
     assert "services/api" not in script
 
 
@@ -156,6 +159,9 @@ def test_terraform_readme_documents_external_api_secret_update_runbook() -> None
     assert "terraform output -raw external_api_secret_arn" in terraform_readme
     assert "scripts/update_external_api_secret.sh --prompt --dry-run" in terraform_readme
     assert "scripts/update_external_api_secret.sh --prompt" in terraform_readme
+    assert "through `AWS_PROFILE`, `AWS_REGION`, and" in terraform_readme
+    assert "`AWS_DEFAULT_REGION`" in terraform_readme
+    assert "passes `--profile`/`--region` to AWS Secrets" in terraform_readme
     assert "`--secret-id`" in terraform_readme
     assert "skip Terraform state lookup" in terraform_readme
     assert "aws secretsmanager update-secret" in terraform_readme
