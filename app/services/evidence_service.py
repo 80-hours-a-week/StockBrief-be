@@ -95,14 +95,14 @@ class EvidenceService:
         ticker: str,
         requested_types: set[str],
     ) -> list[StockEvidenceItemResponse]:
-        chunks = self.session.scalars(
-            select(EvidenceChunk)
+        rows = self.session.execute(
+            select(EvidenceChunk, SourceDocument)
+            .outerjoin(SourceDocument, SourceDocument.id == EvidenceChunk.source_document_id)
             .where(EvidenceChunk.ticker == ticker)
             .order_by(EvidenceChunk.fetched_at.desc())
         ).all()
         items = []
-        for chunk in chunks:
-            source = self.session.get(SourceDocument, chunk.source_document_id)
+        for chunk, source in rows:
             evidence_type = source_type_to_evidence_type(source.source_type if source else "")
             if evidence_type not in requested_types:
                 continue

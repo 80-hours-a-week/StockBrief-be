@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -8,7 +9,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import visitors
 from sqlalchemy.sql.schema import Table
 
-from app.orm import EvidenceChunk, FinancialStatement, PriceMetric, RecommendationScore, RiskSignal
+from app.orm import (
+    EvidenceChunk,
+    FinancialStatement,
+    PriceMetric,
+    RecommendationScore,
+    RiskSignal,
+    SourceDocument,
+)
 from app.services.candidate_service import CandidateService
 
 
@@ -313,6 +321,70 @@ def test_stock_evidence_type_filter_and_limit(seeded_api_client: TestClient) -> 
     data = response.json()["data"]
     assert len(data["items"]) <= 2
     assert {item["source_type"] for item in data["items"]}.issubset({"NEWS"})
+
+
+def test_stock_evidence_bulk_loads_chunk_source_documents(
+    seeded_api_client: TestClient,
+    seeded_session: Session,
+) -> None:
+    fetched_at = datetime(2026, 6, 22, 9, 0, tzinfo=timezone.utc)
+    for index in range(5):
+        source = SourceDocument(
+            ticker="005930",
+            source_type="news",
+            source_name="NAVER_NEWS",
+            source_url=f"https://news.example/bulk-{index}",
+            external_id=f"bulk-news-{index}",
+            title=f"대량 뉴스 근거 {index}",
+            published_at=fetched_at,
+            fetched_at=fetched_at,
+        )
+        seeded_session.add(source)
+        seeded_session.flush()
+        seeded_session.add(
+            EvidenceChunk(
+                evidence_id=f"ev_bulk_news_005930_{index}",
+                ticker="005930",
+                source_document_id=source.id,
+                evidence_type="news",
+                chunk_text=f"대량 뉴스 근거 본문 {index}",
+                source_url=source.source_url,
+                published_at=fetched_at,
+                fetched_at=fetched_at,
+                confidence=Decimal("0.9000"),
+            )
+        )
+    seeded_session.commit()
+
+    engine = seeded_session.get_bind()
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement.upper())
+
+    event.listen(engine, "before_cursor_execute", capture_statement)
+    try:
+        response = seeded_api_client.get(
+            "/v1/stocks/005930/evidence",
+            params={"source_type": "NEWS", "limit": 20},
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_statement)
+
+    assert response.status_code == 200
+    items = response.json()["data"]["items"]
+    assert {item["source_type"] for item in items}.issubset({"NEWS"})
+    assert {f"ev_bulk_news_005930_{index}" for index in range(5)}.issubset(
+        {item["id"] for item in items}
+    )
+    source_document_selects = [
+        statement
+        for statement in statements
+        if " SOURCE_DOCUMENTS " in statement
+    ]
+    assert len(source_document_selects) == 1
+    assert "JOIN SOURCE_DOCUMENTS" in source_document_selects[0]
 
 
 def test_price_evidence_has_source_identifier_when_url_is_missing(
