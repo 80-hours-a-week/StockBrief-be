@@ -73,6 +73,7 @@ def test_new_aws_bootstrap_does_not_pin_old_dev_account() -> None:
     assert '"vpc_id": "vpc-07b9f3920d93b65e1"' in deploy_tfvars
     assert "subnet-08d89333a3c3e2924" in deploy_tfvars
     assert "subnet-0e10680a556fa9ca8" in deploy_tfvars
+    assert "rtb-01a4330966a81395a" in deploy_tfvars
 
 
 def test_agentcore_runtime_module_uses_cloudformation_resources() -> None:
@@ -139,10 +140,45 @@ def test_ingestion_pipeline_resources_are_wired_with_scheduler_disabled_by_defau
     assert "INGESTION_RAW_BUCKET" in api_lambda_tf
     assert "s3:PutObject" in api_lambda_tf
     assert "kms:GenerateDataKey" in api_lambda_tf
+    assert 'variable "vpc_endpoint_route_table_ids"' in variables_tf
+    assert 'resource "aws_vpc_endpoint" "s3"' in root_main_tf
+    assert 'service_name      = "com.amazonaws.${var.aws_region}.s3"' in root_main_tf
+    assert 'vpc_endpoint_type = "Gateway"' in root_main_tf
+    assert "route_table_ids   = var.vpc_endpoint_route_table_ids" in root_main_tf
     assert 'output "ingestion_raw_bucket_name"' in outputs_tf
     assert 'output "ingestion_raw_kms_key_arn"' in outputs_tf
     assert 'output "ingestion_dlq_url"' in outputs_tf
     assert "enable_ingestion_scheduler          = false" in dev_tfvars
+
+
+def test_lambda_nat_egress_is_toggleable_and_disabled_by_default() -> None:
+    egress_tf = _read("egress.tf")
+    variables_tf = _read("variables.tf")
+    dev_tfvars = _read("envs/dev/terraform.tfvars.example")
+    terraform_readme = _read("README.md")
+    deployment_doc = (REPOSITORY_ROOT / "docs/engineering/DEPLOYMENT_BOOTSTRAP.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'variable "enable_lambda_nat_egress"' in variables_tf
+    assert 'variable "lambda_nat_public_subnet_id"' in variables_tf
+    assert 'variable "lambda_nat_route_subnet_ids"' in variables_tf
+    assert "default     = false" in variables_tf
+    assert "aws_nat_gateway\" \"lambda_egress" in egress_tf
+    assert "aws_eip\" \"lambda_nat" in egress_tf
+    assert "aws_route_table\" \"lambda_nat_egress" in egress_tf
+    assert "aws_route_table_association\" \"lambda_nat_egress" in egress_tf
+    assert "local.lambda_nat_egress_inputs_valid" in egress_tf
+    assert "local.lambda_nat_egress_enabled" in egress_tf
+    assert "!contains(var.lambda_nat_route_subnet_ids, var.lambda_nat_public_subnet_id)" in egress_tf
+    assert "not included in lambda_nat_route_subnet_ids" in egress_tf
+    assert "precondition" in egress_tf
+    assert "enable_lambda_nat_egress     = false" in dev_tfvars
+    assert "NAT Gateway hourly and data processing costs" in terraform_readme
+    assert "Do not include" in terraform_readme
+    assert "`lambda_nat_public_subnet_id` in `lambda_nat_route_subnet_ids`" in terraform_readme
+    assert "turn it off after the evidence is collected" in terraform_readme
+    assert "remove the NAT Gateway and EIP" in deployment_doc
 
 
 def test_secret_versions_do_not_reclaim_manually_rotated_current_values() -> None:
