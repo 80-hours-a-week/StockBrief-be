@@ -95,31 +95,27 @@ class EvidenceService:
         ticker: str,
         requested_types: set[str],
     ) -> list[StockEvidenceItemResponse]:
-        chunks = self.session.scalars(
-            select(EvidenceChunk)
+        rows = self.session.execute(
+            select(EvidenceChunk, SourceDocument)
+            .join(SourceDocument, SourceDocument.id == EvidenceChunk.source_document_id)
             .where(EvidenceChunk.ticker == ticker)
             .order_by(EvidenceChunk.fetched_at.desc())
         ).all()
         items = []
-        for chunk in chunks:
-            source = self.session.get(SourceDocument, chunk.source_document_id)
-            evidence_type = source_type_to_evidence_type(source.source_type if source else "")
+        for chunk, source in rows:
+            evidence_type = source_type_to_evidence_type(source.source_type)
             if evidence_type not in requested_types:
                 continue
             items.append(
                 StockEvidenceItemResponse(
                     id=chunk.evidence_id,
                     type=evidence_type,
-                    title=source.title if source else f"{ticker} 근거 데이터",
+                    title=source.title,
                     summary=chunk.chunk_text,
-                    source_name=source.source_name if source else "UNKNOWN_SOURCE",
-                    source_url=chunk.source_url or (source.source_url if source else None),
-                    source_identifier=(
-                        source.external_id if source else str(chunk.source_document_id)
-                    ),
-                    published_at=(
-                        chunk.published_at or (source.published_at if source else None)
-                    ),
+                    source_name=source.source_name,
+                    source_url=chunk.source_url or source.source_url,
+                    source_identifier=source.external_id,
+                    published_at=chunk.published_at or source.published_at,
                     as_of_date=(chunk.published_at.date() if chunk.published_at else None),
                     data_status="available",
                 )
