@@ -164,6 +164,8 @@ def test_lambda_nat_egress_is_toggleable_and_disabled_by_default() -> None:
     assert "aws_route_table_association\" \"lambda_nat_egress" in egress_tf
     assert "local.lambda_nat_egress_inputs_valid" in egress_tf
     assert "local.lambda_nat_egress_enabled" in egress_tf
+    assert "!contains(var.lambda_nat_route_subnet_ids, var.lambda_nat_public_subnet_id)" in egress_tf
+    assert "not included in lambda_nat_route_subnet_ids" in egress_tf
     assert "precondition" in egress_tf
     assert "enable_lambda_nat_egress     = false" in dev_tfvars
     assert "NAT Gateway hourly and data processing costs" in terraform_readme
