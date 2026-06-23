@@ -511,11 +511,16 @@ def summarize_ingestion_status(
     limit: int = 10,
 ) -> dict[str, Any]:
     normalized_tickers = _unique_tickers(tickers or [])
-    runs = session.scalars(
+    run_statement = (
         select(IngestionRun)
         .order_by(IngestionRun.started_at.desc(), IngestionRun.run_id.desc())
         .limit(limit)
-    ).all()
+    )
+    if normalized_tickers:
+        run_statement = run_statement.where(
+            IngestionRun.target_scope["ticker"].as_string().in_(normalized_tickers)
+        )
+    runs = session.scalars(run_statement).all()
     evidence_statement = (
         select(EvidenceChunk, SourceDocument)
         .join(SourceDocument, SourceDocument.id == EvidenceChunk.source_document_id)

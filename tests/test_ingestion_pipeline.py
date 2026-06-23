@@ -513,10 +513,10 @@ def test_ingestion_status_summarizes_recent_runs_and_latest_evidence(
             payload={
                 "items": [
                     {
-                        "title": "삼성전자 신규 뉴스",
-                        "originallink": "https://news.example/status-check",
-                        "link": "https://news.example/status-check",
-                        "description": "상태 확인용 뉴스",
+                        "title": f"{ticker} 신규 뉴스",
+                        "originallink": f"https://news.example/status-check/{ticker}",
+                        "link": f"https://news.example/status-check/{ticker}",
+                        "description": f"{ticker} 상태 확인용 뉴스",
                         "pubDate": "Thu, 18 Jun 2026 09:00:00 +0900",
                     }
                 ]
@@ -537,6 +537,14 @@ def test_ingestion_status_summarizes_recent_runs_and_latest_evidence(
             news_display=1,
         )
     )
+    other_ticker_result = service.run_provider_batch(
+        ProviderIngestionRequest(
+            provider=NAVER_PROVIDER,
+            tickers=["000660"],
+            source_date="2026-06-19",
+            news_display=1,
+        )
+    )
 
     status = summarize_ingestion_status(
         seeded_session,
@@ -545,21 +553,23 @@ def test_ingestion_status_summarizes_recent_runs_and_latest_evidence(
     )
 
     assert ingest_result["ok"] is True
+    assert other_ticker_result["ok"] is True
     assert status["ok"] is True
     assert status["summary"]["ticker_filter"] == ["005930"]
     assert status["summary"]["run_status_counts"]["succeeded"] >= 1
     assert status["summary"]["recent_run_count"] >= 1
     assert status["summary"]["latest_evidence_count"] >= 1
-    assert status["recent_runs"][0]["provider"] == NAVER_PROVIDER
-    assert status["recent_runs"][0]["ticker"] == "005930"
-    assert status["recent_runs"][0]["source_date"] == "2026-06-18"
-    assert status["recent_runs"][0]["completed_at"] is not None
+    assert {item["ticker"] for item in status["recent_runs"]} == {"005930"}
+    assert all(item["provider"] == NAVER_PROVIDER for item in status["recent_runs"])
+    assert all(item["source_date"] == "2026-06-18" for item in status["recent_runs"])
+    assert all(item["completed_at"] is not None for item in status["recent_runs"])
     latest_news = [
         item
         for item in status["latest_evidence"]
         if item["evidence_id"].startswith("ev_naver_news_005930_")
     ]
     assert latest_news
+    assert {item["ticker"] for item in status["latest_evidence"]} == {"005930"}
     assert latest_news[0]["source_name"] == NAVER_PROVIDER
     assert latest_news[0]["source_type"] == "news"
     assert latest_news[0]["published_at"] is not None
