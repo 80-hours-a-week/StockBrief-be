@@ -545,6 +545,22 @@ if [ -z "$existing_branch_policy_id" ]; then
     -f type=branch >/dev/null
 fi
 
+obsolete_branch_policy_ids="$(
+  gh api "repos/${repo_full_name}/environments/${environment}/deployment-branch-policies" \
+    --jq ".branch_policies[] | select(.type == \"branch\" and .name != \"${branch_escaped}\") | .id"
+)"
+
+if [ -n "$obsolete_branch_policy_ids" ]; then
+  echo "Removing obsolete GitHub Environment branch policies for ${repo_full_name}/${environment}"
+  while IFS= read -r obsolete_branch_policy_id; do
+    [ -n "$obsolete_branch_policy_id" ] || continue
+    gh api --method DELETE \
+      "repos/${repo_full_name}/environments/${environment}/deployment-branch-policies/${obsolete_branch_policy_id}" >/dev/null
+  done <<EOF
+${obsolete_branch_policy_ids}
+EOF
+fi
+
 echo "Setting GitHub repository variables on ${repo_full_name}"
 gh variable set "$deploy_role_var" --repo "$repo_full_name" --body "$role_arn" >/dev/null
 
