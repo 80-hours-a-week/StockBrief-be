@@ -220,11 +220,15 @@ def test_new_aws_bootstrap_uses_placeholders_for_operational_identifiers() -> No
     ).read_text(encoding="utf-8")
 
     assert "Do not commit those operational identifiers" in bootstrap_doc
+    assert "regardless of repository visibility" in bootstrap_doc
     assert "<api-gateway-base-url>" in bootstrap_doc
     assert "<cognito-issuer-url>" in bootstrap_doc
     assert "<cognito-user-pool-id>" in bootstrap_doc
     assert "<cognito-app-client-id>" in bootstrap_doc
     assert "<cognito-hosted-ui-domain>" in bootstrap_doc
+    assert "<terraform-state-bucket>" in bootstrap_doc
+    assert "<terraform-lock-table>" in bootstrap_doc
+    assert "<github-actions-deploy-role-arn>" in bootstrap_doc
 
     assert not re.search(
         r"https://[a-z0-9]+\.execute-api\.ap-northeast-2\.amazonaws\.com",
@@ -236,6 +240,9 @@ def test_new_aws_bootstrap_uses_placeholders_for_operational_identifiers() -> No
         bootstrap_doc,
     )
     assert "560271561793" not in bootstrap_doc
+    assert "3pgg4n3hda2pqf9q8ij9m79glk" not in bootstrap_doc
+    assert "stockbrief-terraform-state-560271561793" not in bootstrap_doc
+    assert "arn:aws:iam::560271561793:role/" not in bootstrap_doc
 
 
 def test_github_deploy_role_policy_can_refresh_ingestion_and_nat_resources() -> None:

@@ -9,7 +9,7 @@ Use this section as a handoff template after a new `dev` baseline is
 provisioned. Keep concrete account IDs, resource IDs, API IDs, Cognito IDs, and
 hosted domains in the internal deployment handoff, GitHub Environment notes, or
 Terraform outputs. Do not commit those operational identifiers to this public
-runbook.
+runbook regardless of repository visibility.
 
 Expected provisioned resources:
 
@@ -32,6 +32,12 @@ Runtime outputs to record in the internal handoff:
 - Cognito Hosted UI: `<cognito-hosted-ui-domain>`
 - RDS endpoint is managed by Terraform output and must not be copied into app
   code.
+
+Bootstrap identifiers to record in the internal handoff:
+
+- Terraform state bucket: `<terraform-state-bucket>`
+- Terraform lock table: `<terraform-lock-table>`
+- GitHub Actions deploy role ARN: `<github-actions-deploy-role-arn>`
 
 Completed validation:
 
