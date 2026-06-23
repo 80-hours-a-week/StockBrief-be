@@ -79,8 +79,14 @@ variable "agentcore_runtime_arn" {
   default = ""
 }
 
-variable "bedrock_chat_model_arn" {
-  description = "Foundation model ARN the direct Bedrock chat provider can invoke. Leave empty to avoid Bedrock Runtime permissions."
+variable "bedrock_chat_foundation_model_arns" {
+  description = "Foundation model ARNs the direct Bedrock chat provider can invoke. When an inference profile ARN is set, these ARNs are constrained by bedrock:InferenceProfileArn."
+  type        = list(string)
+  default     = []
+}
+
+variable "bedrock_chat_inference_profile_arn" {
+  description = "Inference profile ARN the direct Bedrock chat provider can invoke. Leave empty for direct foundation model invocation or to avoid Bedrock Runtime permissions."
   type        = string
   default     = ""
 }
