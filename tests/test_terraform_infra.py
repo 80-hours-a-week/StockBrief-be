@@ -65,18 +65,23 @@ def test_rds_backup_retention_period_has_cost_policy_validation() -> None:
     rds_module_variables_tf = _read("modules/rds/variables.tf")
 
     expected_description = (
-        "Use 1 for dev and 7 or more for prod; valid range is 1 to 35."
+        "Use 0 to disable automated backups in dev/test; valid range is 0 to 35."
+    )
+    expected_error = (
+        "Use 0 only when disabling automated backups is approved for dev/test."
     )
 
     assert expected_description in variables_tf
-    assert "var.db_backup_retention_period >= 1" in variables_tf
+    assert "var.db_backup_retention_period >= 0" in variables_tf
     assert "var.db_backup_retention_period <= 35" in variables_tf
-    assert "db_backup_retention_period must be between 1 and 35 days" in variables_tf
+    assert "db_backup_retention_period must be between 0 and 35 days" in variables_tf
+    assert expected_error in variables_tf
 
     assert expected_description in rds_module_variables_tf
-    assert "var.backup_retention_period >= 1" in rds_module_variables_tf
+    assert "var.backup_retention_period >= 0" in rds_module_variables_tf
     assert "var.backup_retention_period <= 35" in rds_module_variables_tf
-    assert "backup_retention_period must be between 1 and 35 days" in rds_module_variables_tf
+    assert "backup_retention_period must be between 0 and 35 days" in rds_module_variables_tf
+    assert expected_error in rds_module_variables_tf
 
 
 def test_new_aws_bootstrap_does_not_pin_old_dev_account() -> None:
