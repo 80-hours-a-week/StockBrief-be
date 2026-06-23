@@ -3,13 +3,15 @@
 Use this runbook when the previous AWS dev account is unavailable and StockBrief
 must be created in a new AWS account.
 
-## Current Dev Status
+## Dev Status Template
 
-As of 2026-06-18, the new `dev` baseline is provisioned in `ap-northeast-2`
-from the current AWS account. Do not treat previous AWS account resources as
-available.
+Use this section as a handoff template after a new `dev` baseline is
+provisioned. Keep concrete account IDs, resource IDs, API IDs, Cognito IDs, and
+hosted domains in the internal deployment handoff, GitHub Environment notes, or
+Terraform outputs. Do not commit those operational identifiers to this public
+runbook.
 
-Provisioned:
+Expected provisioned resources:
 
 - Terraform remote state S3 bucket and DynamoDB lock table
 - GitHub Actions OIDC deploy role
@@ -21,15 +23,13 @@ Provisioned:
 - Secrets Manager VPC endpoint
 - CloudWatch log groups and baseline alarms
 
-Runtime outputs:
+Runtime outputs to record in the internal handoff:
 
-- API base URL: `https://hazfha7995.execute-api.ap-northeast-2.amazonaws.com`
-- Cognito issuer:
-  `https://cognito-idp.ap-northeast-2.amazonaws.com/ap-northeast-2_VPOccT5rI`
-- Cognito User Pool ID: `ap-northeast-2_VPOccT5rI`
-- Cognito App Client ID: `3pgg4n3hda2pqf9q8ij9m79glk`
-- Cognito Hosted UI:
-  `https://stockbrief-dev-560271561793.auth.ap-northeast-2.amazoncognito.com`
+- API base URL: `<api-gateway-base-url>`
+- Cognito issuer: `<cognito-issuer-url>`
+- Cognito User Pool ID: `<cognito-user-pool-id>`
+- Cognito App Client ID: `<cognito-app-client-id>`
+- Cognito Hosted UI: `<cognito-hosted-ui-domain>`
 - RDS endpoint is managed by Terraform output and must not be copied into app
   code.
 

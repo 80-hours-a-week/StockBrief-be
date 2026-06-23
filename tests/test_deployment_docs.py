@@ -194,6 +194,30 @@ def test_deployment_bootstrap_documents_dev_cost_pause_and_resume() -> None:
     assert "Do not use `terraform apply` as a blind repair step" in deployment_doc
 
 
+def test_new_aws_bootstrap_uses_placeholders_for_operational_identifiers() -> None:
+    bootstrap_doc = (
+        REPOSITORY_ROOT / "docs/engineering/NEW_AWS_BOOTSTRAP.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Do not commit those operational identifiers" in bootstrap_doc
+    assert "<api-gateway-base-url>" in bootstrap_doc
+    assert "<cognito-issuer-url>" in bootstrap_doc
+    assert "<cognito-user-pool-id>" in bootstrap_doc
+    assert "<cognito-app-client-id>" in bootstrap_doc
+    assert "<cognito-hosted-ui-domain>" in bootstrap_doc
+
+    assert not re.search(
+        r"https://[a-z0-9]+\.execute-api\.ap-northeast-2\.amazonaws\.com",
+        bootstrap_doc,
+    )
+    assert not re.search(r"ap-northeast-2_[A-Za-z0-9]+", bootstrap_doc)
+    assert not re.search(
+        r"https://[a-z0-9-]+\.auth\.ap-northeast-2\.amazoncognito\.com",
+        bootstrap_doc,
+    )
+    assert "560271561793" not in bootstrap_doc
+
+
 def test_github_deploy_role_policy_can_refresh_ingestion_and_nat_resources() -> None:
     bootstrap_script = (REPOSITORY_ROOT / "scripts/bootstrap_github_oidc.sh").read_text(
         encoding="utf-8"
