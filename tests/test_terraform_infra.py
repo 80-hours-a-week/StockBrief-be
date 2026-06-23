@@ -60,6 +60,25 @@ def test_dev_rds_cost_controls_are_environment_variables() -> None:
     assert "db_backup_retention_period = 7" in prod_tfvars
 
 
+def test_rds_backup_retention_period_has_cost_policy_validation() -> None:
+    variables_tf = _read("variables.tf")
+    rds_module_variables_tf = _read("modules/rds/variables.tf")
+
+    expected_description = (
+        "Use 1 for dev and 7 or more for prod; valid range is 1 to 35."
+    )
+
+    assert expected_description in variables_tf
+    assert "var.db_backup_retention_period >= 1" in variables_tf
+    assert "var.db_backup_retention_period <= 35" in variables_tf
+    assert "db_backup_retention_period must be between 1 and 35 days" in variables_tf
+
+    assert expected_description in rds_module_variables_tf
+    assert "var.backup_retention_period >= 1" in rds_module_variables_tf
+    assert "var.backup_retention_period <= 35" in rds_module_variables_tf
+    assert "backup_retention_period must be between 1 and 35 days" in rds_module_variables_tf
+
+
 def test_new_aws_bootstrap_does_not_pin_old_dev_account() -> None:
     backend_tf = _read("backend.tf")
     deploy_tfvars = _read("envs/dev/deploy.auto.tfvars.json")

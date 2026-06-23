@@ -44,7 +44,12 @@ variable "skip_final_snapshot" {
 }
 
 variable "backup_retention_period" {
-  description = "Number of days to retain automated backups. 0 disables backups."
+  description = "Number of days to retain automated backups. Use 1 for dev and 7 or more for prod; valid range is 1 to 35."
   type        = number
   default     = 7
+
+  validation {
+    condition     = var.backup_retention_period >= 1 && var.backup_retention_period <= 35
+    error_message = "backup_retention_period must be between 1 and 35 days. Use 1 for dev and 7 or more for prod."
+  }
 }
