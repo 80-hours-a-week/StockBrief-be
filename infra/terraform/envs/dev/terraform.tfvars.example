@@ -58,4 +58,5 @@ enable_ingestion_scheduler          = false
 ingestion_schedule_expression       = "cron(0 18 ? * MON-FRI *)"
 ingestion_schedule_provider         = "OpenDART"
 ingestion_schedule_tickers          = []
+ingestion_schedule_jobs             = []
 ingestion_dlq_message_retention_seconds = 1209600

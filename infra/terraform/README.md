@@ -87,11 +87,12 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    - `enable_ingestion_scheduler`
    - `ingestion_schedule_provider`
    - `ingestion_schedule_tickers`
+   - `ingestion_schedule_jobs`
 
    For the first backend-only deployment, keep `enable_amplify = false`. Enable
    it only after the target GitHub organization approves the Amplify GitHub App.
    Also keep `enable_ingestion_scheduler = false` until provider API credentials
-   are stored in Secrets Manager and the target ticker list is reviewed.
+   are stored in Secrets Manager and the target ticker/job list is reviewed.
    Keep `enable_lambda_nat_egress = false` until live provider ingestion is
    approved because NAT Gateway creates hourly and data processing charges.
 
@@ -408,8 +409,11 @@ complete and recorded in the PR body:
   the smoke window and turn it off after the evidence is collected.
 - S3 raw archive objects are written for the manual run and the SQS DLQ remains
   empty after the smoke test.
-- The schedule expression, provider, and ticker list are reviewed for cost,
-  rate-limit, and data freshness expectations.
+- The schedule expression, provider job list, and ticker list are reviewed for
+  cost, rate-limit, and data freshness expectations. Use
+  `ingestion_schedule_jobs` for more than one provider; the legacy
+  `ingestion_schedule_provider` and `ingestion_schedule_tickers` variables are
+  used only when `ingestion_schedule_jobs` is empty.
 
 If any check fails, keep the scheduler disabled and run ingestion manually until
 the missing credential, network egress, or provider behavior is fixed.

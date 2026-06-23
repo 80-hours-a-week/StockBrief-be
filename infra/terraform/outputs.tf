@@ -51,8 +51,13 @@ output "ingestion_dlq_url" {
 }
 
 output "ingestion_scheduler_name" {
-  description = "EventBridge Scheduler name for provider ingestion when enabled."
-  value       = try(aws_scheduler_schedule.provider_ingestion[0].name, "")
+  description = "Comma-separated EventBridge Scheduler names for provider ingestion when enabled."
+  value       = length(aws_scheduler_schedule.provider_ingestion) > 0 ? join(",", [for schedule in values(aws_scheduler_schedule.provider_ingestion) : schedule.name]) : ""
+}
+
+output "ingestion_scheduler_names" {
+  description = "EventBridge Scheduler names for provider ingestion when enabled."
+  value       = [for schedule in values(aws_scheduler_schedule.provider_ingestion) : schedule.name]
 }
 
 output "cognito_user_pool_id" {

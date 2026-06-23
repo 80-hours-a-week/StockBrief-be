@@ -2,9 +2,26 @@ data "aws_caller_identity" "current" {}
 
 locals {
   ingestion_raw_bucket_name = "${local.name_prefix}-raw-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
-  ingestion_scheduler_enabled = (
-    var.enable_ingestion_scheduler && length(var.ingestion_schedule_tickers) > 0
-  )
+  legacy_ingestion_schedule_jobs = length(var.ingestion_schedule_tickers) > 0 ? [
+    {
+      schedule_key        = lower(replace(var.ingestion_schedule_provider, "_", "-"))
+      provider            = var.ingestion_schedule_provider
+      tickers             = var.ingestion_schedule_tickers
+      schedule_expression = var.ingestion_schedule_expression
+    }
+  ] : []
+  configured_ingestion_schedule_jobs = length(var.ingestion_schedule_jobs) > 0 ? [
+    for job in var.ingestion_schedule_jobs : {
+      schedule_key        = lower(replace(job.provider, "_", "-"))
+      provider            = job.provider
+      tickers             = job.tickers
+      schedule_expression = coalesce(job.schedule_expression, var.ingestion_schedule_expression)
+    }
+  ] : local.legacy_ingestion_schedule_jobs
+  ingestion_schedule_jobs_by_key = var.enable_ingestion_scheduler ? {
+    for job in local.configured_ingestion_schedule_jobs : job.schedule_key => job
+  } : {}
+  ingestion_scheduler_enabled = length(local.ingestion_schedule_jobs_by_key) > 0
 }
 
 resource "aws_s3_bucket" "ingestion_raw" {
@@ -117,10 +134,10 @@ resource "aws_iam_role_policy" "ingestion_scheduler_invoke" {
 }
 
 resource "aws_scheduler_schedule" "provider_ingestion" {
-  count = local.ingestion_scheduler_enabled ? 1 : 0
+  for_each = local.ingestion_schedule_jobs_by_key
 
-  name                         = "${local.name_prefix}-provider-ingestion"
-  schedule_expression          = var.ingestion_schedule_expression
+  name                         = "${local.name_prefix}-provider-ingestion-${each.key}"
+  schedule_expression          = each.value.schedule_expression
   schedule_expression_timezone = "Asia/Seoul"
 
   flexible_time_window {
@@ -137,19 +154,19 @@ resource "aws_scheduler_schedule" "provider_ingestion" {
 
     input = jsonencode({
       stockbrief_operation = "ingest_provider_batch"
-      provider             = var.ingestion_schedule_provider
-      tickers              = var.ingestion_schedule_tickers
+      provider             = each.value.provider
+      tickers              = each.value.tickers
       raise_on_failure     = true
     })
   }
 }
 
 resource "aws_lambda_permission" "ingestion_scheduler" {
-  count = local.ingestion_scheduler_enabled ? 1 : 0
+  for_each = local.ingestion_schedule_jobs_by_key
 
-  statement_id  = "AllowExecutionFromIngestionScheduler"
+  statement_id  = "AllowExecutionFromIngestionScheduler-${each.key}"
   action        = "lambda:InvokeFunction"
   function_name = module.api_lambda.lambda_function_name
   principal     = "scheduler.amazonaws.com"
-  source_arn    = aws_scheduler_schedule.provider_ingestion[0].arn
+  source_arn    = aws_scheduler_schedule.provider_ingestion[each.key].arn
 }

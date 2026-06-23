@@ -347,6 +347,9 @@ Do not enable EventBridge Scheduler until all conditions are true:
   archive, DLQ, and CloudWatch logs have been checked.
 - Provider rate limits, ticker count, and expected execution frequency have
   been reviewed.
+- The reviewed dev scheduler job list is explicit. For the first scheduled
+  rollout, use `OpenDART` and `NAVER_NEWS` for ticker `005930` with the weekday
+  18:00 KST expression `cron(0 18 ? * MON-FRI *)`.
 - Lambda outbound internet egress is confirmed by `check_provider_egress`.
 - The scheduler change is reviewed in a separate PR.
 

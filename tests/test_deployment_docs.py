@@ -161,6 +161,7 @@ def test_ingestion_scheduler_enable_gate_documents_live_provider_prerequisites()
     assert "DLQ" in scheduler_gate
     assert "rate-limit" in scheduler_gate
     assert "data freshness" in scheduler_gate
+    assert "ingestion_schedule_jobs" in scheduler_gate
     assert "keep the scheduler disabled" in scheduler_gate
 
 

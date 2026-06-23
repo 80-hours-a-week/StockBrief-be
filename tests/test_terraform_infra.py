@@ -197,8 +197,10 @@ def test_ingestion_pipeline_resources_are_wired_with_scheduler_disabled_by_defau
     outputs_tf = _read("outputs.tf")
     api_lambda_tf = _read("modules/api_lambda/main.tf")
     dev_tfvars = _read("envs/dev/terraform.tfvars.example")
+    deploy_tfvars = json.loads(_read("envs/dev/deploy.auto.tfvars.json"))
 
     assert 'variable "enable_ingestion_scheduler"' in variables_tf
+    assert 'variable "ingestion_schedule_jobs"' in variables_tf
     assert "default     = false" in variables_tf
     assert "aws_s3_bucket\" \"ingestion_raw" in ingestion_tf
     assert "aws_kms_key\" \"ingestion_raw" in ingestion_tf
@@ -208,7 +210,8 @@ def test_ingestion_pipeline_resources_are_wired_with_scheduler_disabled_by_defau
     assert "sqs_managed_sse_enabled   = true" in ingestion_tf
     assert "aws_scheduler_schedule\" \"provider_ingestion" in ingestion_tf
     assert "local.ingestion_scheduler_enabled" in ingestion_tf
-    assert "length(var.ingestion_schedule_tickers) > 0" in ingestion_tf
+    assert "local.ingestion_schedule_jobs_by_key" in ingestion_tf
+    assert "for_each = local.ingestion_schedule_jobs_by_key" in ingestion_tf
     assert "stockbrief_operation = \"ingest_provider_batch\"" in ingestion_tf
     assert "raise_on_failure     = true" in ingestion_tf
     assert "INGESTION_RAW_BUCKET" in root_main_tf
@@ -223,7 +226,21 @@ def test_ingestion_pipeline_resources_are_wired_with_scheduler_disabled_by_defau
     assert 'output "ingestion_raw_bucket_name"' in outputs_tf
     assert 'output "ingestion_raw_kms_key_arn"' in outputs_tf
     assert 'output "ingestion_dlq_url"' in outputs_tf
+    assert 'output "ingestion_scheduler_names"' in outputs_tf
     assert "enable_ingestion_scheduler          = false" in dev_tfvars
+    assert deploy_tfvars["enable_ingestion_scheduler"] is True
+    assert deploy_tfvars["ingestion_schedule_jobs"] == [
+        {
+            "provider": "OpenDART",
+            "tickers": ["005930"],
+            "schedule_expression": "cron(0 18 ? * MON-FRI *)",
+        },
+        {
+            "provider": "NAVER_NEWS",
+            "tickers": ["005930"],
+            "schedule_expression": "cron(0 18 ? * MON-FRI *)",
+        },
+    ]
 
 
 def test_lambda_nat_egress_is_toggleable_and_disabled_by_default() -> None:

@@ -34,6 +34,8 @@ def test_ingestion_operations_runbook_exists_and_covers_manual_smoke() -> None:
     assert '"dry_run":true' in runbook
     assert '"dry_run":false' in runbook
     assert "stale_started_run_reconciled" in runbook
+    assert "OpenDART` and `NAVER_NEWS` for ticker `005930`" in runbook
+    assert "cron(0 18 ? * MON-FRI *)" in runbook
     assert "Replace `YYYY-MM-DD`" in runbook
     assert "with the business date you want to" in runbook
     assert "missing_api_key" in runbook

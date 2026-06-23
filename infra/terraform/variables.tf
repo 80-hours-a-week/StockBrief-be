@@ -325,6 +325,30 @@ variable "ingestion_schedule_tickers" {
   default     = []
 }
 
+variable "ingestion_schedule_jobs" {
+  description = "Reviewed provider ingestion jobs to schedule. When empty, the legacy ingestion_schedule_provider/tickers variables are used."
+  type = list(object({
+    provider            = string
+    tickers             = list(string)
+    schedule_expression = optional(string)
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for job in var.ingestion_schedule_jobs : contains(["OpenDART", "NAVER_NEWS"], job.provider)
+    ])
+    error_message = "Each ingestion_schedule_jobs provider must be OpenDART or NAVER_NEWS."
+  }
+
+  validation {
+    condition = alltrue([
+      for job in var.ingestion_schedule_jobs : length(job.tickers) > 0
+    ])
+    error_message = "Each ingestion_schedule_jobs entry must include at least one ticker."
+  }
+}
+
 variable "ingestion_dlq_message_retention_seconds" {
   description = "Retention period for failed ingestion scheduler invocation messages."
   type        = number
