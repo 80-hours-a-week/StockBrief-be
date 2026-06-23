@@ -68,11 +68,11 @@ def test_chat_mock_provider_preserves_existing_contract(
     assert response.json()["message"] == "mock Agent 응답을 반환했습니다."
 
 
-def test_chat_bedrock_provider_fails_closed_until_enabled(
+def test_chat_bedrock_provider_fails_closed_when_model_is_missing(
     seeded_api_client: TestClient,
 ) -> None:
     def override_settings() -> Settings:
-        return Settings(chat_provider="bedrock")
+        return Settings(chat_provider="bedrock", bedrock_chat_model_id="")
 
     app.dependency_overrides[get_settings] = override_settings
     try:
@@ -87,14 +87,106 @@ def test_chat_bedrock_provider_fails_closed_until_enabled(
     payload = response.json()
     assert payload["success"] is False
     assert payload["error"]["code"] == "CHAT_PROVIDER_UNAVAILABLE"
-    assert "Bedrock chat provider is not enabled" in payload["error"]["message"]
+    assert "BEDROCK_CHAT_MODEL_ID" in payload["error"]["message"]
+
+
+def test_chat_bedrock_provider_returns_model_answer_with_existing_citations(
+    seeded_api_client: TestClient,
+    monkeypatch,
+) -> None:
+    class FakeBedrockClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {
+                                "text": (
+                                    "삼성전자(005930)는 공개 데이터 기준 추천 후보 점수와 "
+                                    "연결 근거가 확인된 검토 대상입니다. "
+                                    "[ev_mock_005930_disclosure] 근거를 함께 확인하세요."
+                                )
+                            }
+                        ]
+                    }
+                }
+            }
+
+    fake_client = FakeBedrockClient()
+
+    def fake_boto3_client(service_name: str, **kwargs):
+        assert service_name == "bedrock-runtime"
+        return fake_client
+
+    def override_settings() -> Settings:
+        return Settings(
+            chat_provider="bedrock",
+            bedrock_chat_model_id="amazon.nova-micro-v1:0",
+            bedrock_chat_region="ap-northeast-2",
+        )
+
+    monkeypatch.setattr("app.services.chat.providers.boto3.client", fake_boto3_client)
+    app.dependency_overrides[get_settings] = override_settings
+    try:
+        response = seeded_api_client.post(
+            "/v1/chat",
+            json={"ticker": "005930", "message": "왜 추천됐나요?"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == "bedrock Agent 응답을 반환했습니다."
+    assert "연결 근거가 확인된 검토 대상" in payload["data"]["answer"]
+    assert payload["data"]["citations"]
+    assert fake_client.calls
+    assert fake_client.calls[0]["modelId"] == "amazon.nova-micro-v1:0"
+    assert fake_client.calls[0]["inferenceConfig"]["maxTokens"] == 700
+
+
+def test_chat_bedrock_provider_keeps_policy_redirect_deterministic(
+    seeded_api_client: TestClient,
+    monkeypatch,
+) -> None:
+    def fail_if_bedrock_client_is_created(*args, **kwargs):
+        raise AssertionError("redirected policy requests must not call Bedrock")
+
+    def override_settings() -> Settings:
+        return Settings(
+            chat_provider="bedrock",
+            bedrock_chat_model_id="amazon.nova-micro-v1:0",
+            bedrock_chat_region="ap-northeast-2",
+        )
+
+    monkeypatch.setattr(
+        "app.services.chat.providers.boto3.client",
+        fail_if_bedrock_client_is_created,
+    )
+    app.dependency_overrides[get_settings] = override_settings
+    try:
+        response = seeded_api_client.post(
+            "/v1/chat",
+            json={"ticker": "005930", "message": "이 종목 매수해도 돼?"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == "bedrock Agent 응답을 반환했습니다."
+    assert payload["data"]["safety"]["policy_action"] == "REDIRECT"
 
 
 def test_chat_provider_factory_failure_returns_fail_closed_response(
     seeded_api_client: TestClient,
     monkeypatch,
 ) -> None:
-    def unavailable_provider_factory(name: str):
+    def unavailable_provider_factory(name: str, **kwargs):
         raise ChatProviderUnavailable(f"Unsupported chat provider: {name}")
 
     monkeypatch.setattr(

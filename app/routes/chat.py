@@ -42,7 +42,7 @@ def chat(
     candidate = candidate_service.candidate_response(stock, score)
     evidence = EvidenceService(session).items(request.ticker)
     try:
-        provider = chat_provider_for(settings.chat_provider)
+        provider = chat_provider_for(settings.chat_provider, settings=settings)
         response = provider.compose(
             ChatProviderInput(
                 message=request.message,
