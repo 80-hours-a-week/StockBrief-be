@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.main import app
 from app.orm import EvidenceChunk, FinancialStatement, PriceMetric, RecommendationScore
-from app.services.chat import ChatProviderUnavailable, chat_provider_for
+from app.services.chat import ChatProviderUnavailable, chat_provider_for, compose_chat_answer
 
 
 PROHIBITED_KOREAN_OUTPUT_TERMS = [
@@ -149,6 +149,97 @@ def test_chat_bedrock_provider_returns_model_answer_with_existing_citations(
     assert fake_client.calls[0]["inferenceConfig"]["maxTokens"] == 700
 
 
+def test_chat_bedrock_provider_rejects_unsupported_model_citation(
+    seeded_api_client: TestClient,
+    monkeypatch,
+) -> None:
+    class FakeBedrockClient:
+        def converse(self, **kwargs):
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {
+                                "text": (
+                                    "삼성전자(005930)는 공개 데이터 기준 검토 대상입니다. "
+                                    "[ev_fake] 근거를 확인하세요."
+                                )
+                            }
+                        ]
+                    }
+                }
+            }
+
+    def override_settings() -> Settings:
+        return Settings(
+            chat_provider="bedrock",
+            bedrock_chat_model_id="amazon.nova-micro-v1:0",
+            bedrock_chat_region="ap-northeast-2",
+        )
+
+    monkeypatch.setattr(
+        "app.services.chat.providers.boto3.client",
+        lambda *args, **kwargs: FakeBedrockClient(),
+    )
+    app.dependency_overrides[get_settings] = override_settings
+    try:
+        response = seeded_api_client.post(
+            "/v1/chat",
+            json={"ticker": "005930", "message": "왜 추천됐나요?"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error"]["code"] == "CHAT_PROVIDER_UNAVAILABLE"
+    assert "unsupported evidence citations" in payload["error"]["message"]
+
+
+def test_chat_bedrock_provider_requires_model_citation_when_evidence_exists(
+    seeded_api_client: TestClient,
+    monkeypatch,
+) -> None:
+    class FakeBedrockClient:
+        def converse(self, **kwargs):
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {
+                                "text": "삼성전자(005930)는 공개 데이터 기준 검토 대상입니다."
+                            }
+                        ]
+                    }
+                }
+            }
+
+    def override_settings() -> Settings:
+        return Settings(
+            chat_provider="bedrock",
+            bedrock_chat_model_id="amazon.nova-micro-v1:0",
+            bedrock_chat_region="ap-northeast-2",
+        )
+
+    monkeypatch.setattr(
+        "app.services.chat.providers.boto3.client",
+        lambda *args, **kwargs: FakeBedrockClient(),
+    )
+    app.dependency_overrides[get_settings] = override_settings
+    try:
+        response = seeded_api_client.post(
+            "/v1/chat",
+            json={"ticker": "005930", "message": "왜 추천됐나요?"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error"]["code"] == "CHAT_PROVIDER_UNAVAILABLE"
+    assert "without evidence citations" in payload["error"]["message"]
+
+
 def test_chat_bedrock_provider_keeps_policy_redirect_deterministic(
     seeded_api_client: TestClient,
     monkeypatch,
@@ -180,6 +271,35 @@ def test_chat_bedrock_provider_keeps_policy_redirect_deterministic(
     payload = response.json()
     assert payload["message"] == "bedrock Agent 응답을 반환했습니다."
     assert payload["data"]["safety"]["policy_action"] == "REDIRECT"
+
+
+def test_chat_closes_read_session_before_provider_io(
+    seeded_api_client: TestClient,
+    seeded_session: Session,
+    monkeypatch,
+) -> None:
+    class AssertingProvider:
+        name = "mock"
+
+        def compose(self, request):
+            assert not seeded_session.in_transaction()
+            return compose_chat_answer(
+                message=request.message,
+                candidate=request.candidate,
+                evidence=request.evidence,
+            )
+
+    monkeypatch.setattr(
+        "app.routes.chat.chat_provider_for",
+        lambda *args, **kwargs: AssertingProvider(),
+    )
+
+    response = seeded_api_client.post(
+        "/v1/chat",
+        json={"ticker": "005930", "message": "왜 추천됐나요?"},
+    )
+
+    assert response.status_code == 200
 
 
 def test_chat_provider_factory_failure_returns_fail_closed_response(

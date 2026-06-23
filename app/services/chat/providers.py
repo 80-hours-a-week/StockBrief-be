@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -24,6 +25,7 @@ PROHIBITED_MODEL_OUTPUT_TERMS = (
     "손절가",  # policy-scan: allow model-output-guard
     "수익 보장",  # policy-scan: allow model-output-guard
 )
+EVIDENCE_ID_REFERENCE_PATTERN = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9_.:-]{2,})\]")
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,10 @@ class BedrockChatProvider:
             raise ChatProviderUnavailable(
                 "Bedrock chat provider returned an unsafe answer."
             )
+        _validate_answer_citations(
+            answer=answer,
+            allowed_evidence_ids=set(baseline.used_evidence_ids),
+        )
 
         return ChatResponse(
             answer=answer,
@@ -232,3 +238,24 @@ def _extract_bedrock_text(response: dict[str, Any]) -> str:
 def _contains_prohibited_output(value: str) -> bool:
     normalized = value.casefold()
     return any(term.casefold() in normalized for term in PROHIBITED_MODEL_OUTPUT_TERMS)
+
+
+def _validate_answer_citations(
+    *,
+    answer: str,
+    allowed_evidence_ids: set[str],
+) -> None:
+    if not allowed_evidence_ids:
+        return
+
+    cited_evidence_ids = set(EVIDENCE_ID_REFERENCE_PATTERN.findall(answer))
+    if not cited_evidence_ids:
+        raise ChatProviderUnavailable(
+            "Bedrock chat provider returned an answer without evidence citations."
+        )
+
+    unexpected_evidence_ids = cited_evidence_ids - allowed_evidence_ids
+    if unexpected_evidence_ids:
+        raise ChatProviderUnavailable(
+            "Bedrock chat provider returned unsupported evidence citations."
+        )
