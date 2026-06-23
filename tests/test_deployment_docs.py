@@ -63,6 +63,10 @@ def test_backend_ci_checks_lambda_packaging_script_on_pr() -> None:
     assert "pull_request:" in workflow
     assert "Check Lambda packaging script syntax" in workflow
     assert "bash -n scripts/package_api_lambda.sh" in workflow
+    assert "Verify deterministic Lambda package" in workflow
+    assert "./scripts/package_api_lambda.sh" in workflow
+    assert "sha256sum dist/stockbrief-api-lambda.zip" in workflow
+    assert 'test "$first_hash" = "$second_hash"' in workflow
 
 
 def test_external_api_secret_update_script_handles_secret_payload_safely() -> None:
