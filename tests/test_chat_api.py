@@ -90,6 +90,30 @@ def test_chat_bedrock_provider_fails_closed_until_enabled(
     assert "Bedrock chat provider is not enabled" in payload["error"]["message"]
 
 
+def test_chat_provider_factory_failure_returns_fail_closed_response(
+    seeded_api_client: TestClient,
+    monkeypatch,
+) -> None:
+    def unavailable_provider_factory(name: str):
+        raise ChatProviderUnavailable(f"Unsupported chat provider: {name}")
+
+    monkeypatch.setattr(
+        "app.routes.chat.chat_provider_for",
+        unavailable_provider_factory,
+    )
+
+    response = seeded_api_client.post(
+        "/v1/chat",
+        json={"ticker": "005930", "message": "왜 추천됐나요?"},
+    )
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "CHAT_PROVIDER_UNAVAILABLE"
+    assert "Unsupported chat provider" in payload["error"]["message"]
+
+
 def test_chat_provider_factory_rejects_unknown_provider() -> None:
     try:
         chat_provider_for("unknown")
