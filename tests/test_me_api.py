@@ -376,12 +376,16 @@ def test_chat_sessions_are_user_scoped(seeded_session: Session) -> None:
         assert created.status_code == 200
         assert created.json()["ticker"] == "005930"
         assert first_client.get("/v1/me/chat-sessions").json()["count"] == 1
+        session_id = created.json()["session_id"]
     finally:
         app.dependency_overrides.clear()
 
     second_client = _authenticated_client(seeded_session, "cognito-sub-2")
     try:
         assert second_client.get("/v1/me/chat-sessions").json()["count"] == 0
+        detail = second_client.get(f"/v1/me/chat-sessions/{session_id}")
+        assert detail.status_code == 404
+        assert detail.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
     finally:
         app.dependency_overrides.clear()
 
@@ -413,6 +417,21 @@ def test_authenticated_chat_persists_session_and_messages(seeded_session: Sessio
         payload = response.json()
         assert payload["data"]["session_id"]
         assert client.get("/v1/me/chat-sessions").json()["count"] == 1
+        detail = client.get(f"/v1/me/chat-sessions/{payload['data']['session_id']}")
+        assert detail.status_code == 200
+        detail_payload = detail.json()
+        assert detail_payload["session"]["session_id"] == payload["data"]["session_id"]
+        assert detail_payload["session"]["ticker"] == "005930"
+        assert [message["role"] for message in detail_payload["messages"]] == [
+            "user",
+            "assistant",
+        ]
+        assert detail_payload["messages"][0]["content"] == "왜 추천됐나요?"
+        assert detail_payload["messages"][1]["content"] == payload["data"]["answer"]
+        assert detail_payload["messages"][1]["citations"]
+        assert detail_payload["messages"][1]["safety_flags"] == [
+            {"policy_status": "allowed"}
+        ]
         messages = seeded_session.scalars(
             select(ChatMessage).where(ChatMessage.session_id == payload["data"]["session_id"])
         ).all()
