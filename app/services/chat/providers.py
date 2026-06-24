@@ -231,6 +231,7 @@ def _system_prompt() -> str:
 def _user_prompt(*, request: ChatProviderInput, baseline: ChatResponse) -> str:
     candidate = request.candidate
     citable_evidence = _citable_evidence(request=request, baseline=baseline)
+    allowed_citation_ids = set(_citation_ids(baseline.citations))
     evidence_lines = [
         (
             f"- id={item.id}; type={item.type}; title={item.title}; "
@@ -242,7 +243,7 @@ def _user_prompt(*, request: ChatProviderInput, baseline: ChatResponse) -> str:
     reason_lines = [
         (
             f"- component={reason.component}; summary={reason.summary}; "
-            f"evidence_ids={', '.join(reason.evidence_ids)}"
+            f"evidence_ids={_reason_evidence_ids(reason.evidence_ids, allowed_citation_ids)}"
         )
         for reason in candidate.recommendation_reasons[:4]
     ]
@@ -281,6 +282,14 @@ def _citable_evidence(
         for citation in baseline.citations
         if citation.evidence_id in evidence_by_id
     ]
+
+
+def _reason_evidence_ids(
+    evidence_ids: list[str],
+    allowed_citation_ids: set[str],
+) -> str:
+    filtered = [evidence_id for evidence_id in evidence_ids if evidence_id in allowed_citation_ids]
+    return ", ".join(filtered) or "none"
 
 
 def _citation_ids(citations: list[ChatCitation]) -> list[str]:

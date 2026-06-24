@@ -259,7 +259,7 @@ def test_chat_bedrock_prompt_only_includes_guard_allowed_evidence() -> None:
                 reason_id="reason-disclosure",
                 component="disclosure_event",
                 summary="최근 공시와 실적 근거가 연결되었습니다.",
-                evidence_ids=["ev_used_a", "ev_used_b"],
+                evidence_ids=["ev_used_a", "ev_used_b", "ev_used_c", "ev_used_d", "ev_unused"],
             )
         ],
         risk_tags=["근거 확인 필요"],
@@ -303,6 +303,28 @@ def test_chat_bedrock_prompt_only_includes_guard_allowed_evidence() -> None:
             as_of_date=date(2026, 6, 24),
             data_status="available",
         ),
+        StockEvidenceItemResponse(
+            id="ev_used_c",
+            type="price",
+            title="가격 지표",
+            summary="거래 지표 근거입니다.",
+            source_name="KRX",
+            source_url="https://example.com/c",
+            published_at=datetime(2026, 6, 24, tzinfo=timezone.utc),
+            as_of_date=date(2026, 6, 24),
+            data_status="available",
+        ),
+        StockEvidenceItemResponse(
+            id="ev_used_d",
+            type="news",
+            title="시장 뉴스",
+            summary="시장 관심도 근거입니다.",
+            source_name="NAVER_NEWS",
+            source_url="https://example.com/d",
+            published_at=datetime(2026, 6, 24, tzinfo=timezone.utc),
+            as_of_date=date(2026, 6, 24),
+            data_status="available",
+        ),
     ]
 
     response = provider.compose(
@@ -313,10 +335,11 @@ def test_chat_bedrock_prompt_only_includes_guard_allowed_evidence() -> None:
         )
     )
 
-    assert response.used_evidence_ids == ["ev_used_a", "ev_used_b"]
+    assert response.used_evidence_ids == ["ev_used_a", "ev_used_b", "ev_used_c", "ev_used_d"]
     assert fake_client.call is not None
     prompt = fake_client.call["messages"][0]["content"][0]["text"]
-    assert "Allowed citation IDs: ev_used_a, ev_used_b" in prompt
+    assert "Allowed citation IDs: ev_used_a, ev_used_b, ev_used_c, ev_used_d" in prompt
+    assert "evidence_ids=ev_used_a, ev_used_b, ev_used_c, ev_used_d" in prompt
     assert "ev_used_a" in prompt
     assert "ev_used_b" in prompt
     assert "title=분기보고서" in prompt
