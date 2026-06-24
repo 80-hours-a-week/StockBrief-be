@@ -103,6 +103,29 @@ def test_new_aws_bootstrap_does_not_pin_old_dev_account() -> None:
     assert "rtb-0de4e4c9b811cd39c" in deploy_tfvars
 
 
+def test_dev_deploy_tfvars_documents_low_cost_local_only_bootstrap() -> None:
+    deploy_tfvars = json.loads(_read("envs/dev/deploy.auto.tfvars.json"))
+    terraform_readme = _read("README.md")
+
+    assert deploy_tfvars["enable_amplify"] is False
+    assert deploy_tfvars["amplify_cognito_redirect_uri"] == ""
+    assert "amplifyapp.com" not in deploy_tfvars["cors_allowed_origins"]
+    assert all("amplifyapp.com" not in url for url in deploy_tfvars["cognito_callback_urls"])
+    assert all("amplifyapp.com" not in url for url in deploy_tfvars["cognito_logout_urls"])
+    assert "low-cost," in terraform_readme
+    assert "local-only bootstrap posture" in terraform_readme
+    assert "track the callback, logout, and CORS change through" in terraform_readme
+    assert "#162" in terraform_readme
+
+
+def test_dev_account_transition_requires_backend_deploy_result_on_issue_52() -> None:
+    terraform_readme = _read("README.md")
+
+    assert "After a dev backend/account transition PR merges" in terraform_readme
+    assert "run `backend-dev-deploy`" in terraform_readme
+    assert "record the success or expected guard failure on #52" in terraform_readme
+
+
 def test_agentcore_runtime_module_uses_cloudformation_resources() -> None:
     agentcore_tf = _read("modules/agentcore_runtime/main.tf")
     root_main_tf = _read("main.tf")
