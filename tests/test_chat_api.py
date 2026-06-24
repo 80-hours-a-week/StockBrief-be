@@ -224,7 +224,7 @@ def test_chat_bedrock_prompt_only_includes_guard_allowed_evidence() -> None:
                             {
                                 "text": (
                                     "삼성전자(005930)는 공개 데이터 기준으로 검토할 수 있는 "
-                                    "후보입니다. [ev_used_a] [ev_used_b]"
+                                    "후보입니다. [ev_used_a] [ev_used_a] [ev_used_b]"
                                 )
                             }
                         ]
@@ -344,6 +344,7 @@ def test_chat_bedrock_prompt_only_includes_guard_allowed_evidence() -> None:
     assert "ev_used_b" in prompt
     assert "title=분기보고서" in prompt
     assert "summary=공시 근거입니다." in prompt
+    assert prompt.count("id=ev_used_a;") == 1
     assert "title=재무 요약" in prompt
     assert "summary=실적 근거입니다." in prompt
     assert "ev_unused" not in prompt

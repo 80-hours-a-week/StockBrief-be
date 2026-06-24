@@ -277,11 +277,15 @@ def _citable_evidence(
     baseline: ChatResponse,
 ) -> list[StockEvidenceItemResponse]:
     evidence_by_id = {item.id: item for item in request.evidence}
-    return [
-        evidence_by_id[citation.evidence_id]
-        for citation in baseline.citations
-        if citation.evidence_id in evidence_by_id
-    ]
+    seen: set[str] = set()
+    citable_evidence: list[StockEvidenceItemResponse] = []
+    for citation in baseline.citations:
+        evidence_id = citation.evidence_id
+        if evidence_id not in evidence_by_id or evidence_id in seen:
+            continue
+        seen.add(evidence_id)
+        citable_evidence.append(evidence_by_id[evidence_id])
+    return citable_evidence
 
 
 def _reason_evidence_ids(
