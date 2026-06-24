@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -275,12 +275,17 @@ def get_chat_session_detail(
             },
         )
 
+    role_order = case(
+        (ChatMessage.role == "user", 0),
+        (ChatMessage.role == "assistant", 1),
+        else_=2,
+    )
     messages = session.scalars(
         select(ChatMessage)
         .where(ChatMessage.session_id == row.session_id)
         .order_by(
             ChatMessage.created_at.asc(),
-            ChatMessage.role.desc(),
+            role_order.asc(),
             ChatMessage.message_id.asc(),
         )
     ).all()
