@@ -265,6 +265,8 @@ def test_deployment_bootstrap_documents_nat_egress_plan_review_checklist() -> No
     assert "terraform state show module.cognito.aws_cognito_user_pool_client.client" in checklist
     assert "terraform state show module.rds.aws_db_instance.this" in checklist
     assert "terraform state show module.api_lambda.aws_lambda_function.api" in checklist
+    assert "adjust `--profile`, `--region`, and `Name` tag" in checklist
+    assert "values to match that environment's Terraform resources" in checklist
     assert "aws ec2 describe-nat-gateways" in checklist
     assert "aws ec2 describe-route-tables" in checklist
     assert "If any non-NAT item is unexplained, do not apply" in checklist

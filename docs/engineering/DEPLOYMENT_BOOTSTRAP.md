@@ -308,6 +308,10 @@ Record the classification in the PR body before apply:
 
 Useful read-only checks:
 
+The AWS CLI examples below use `dev` environment values. Before running them
+for another target environment, adjust `--profile`, `--region`, and `Name` tag
+values to match that environment's Terraform resources.
+
 ```bash
 cd infra/terraform
 
