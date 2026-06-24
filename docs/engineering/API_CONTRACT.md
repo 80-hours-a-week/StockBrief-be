@@ -363,6 +363,8 @@ validated:
 - `notifications.email_enabled`: boolean
 - `notifications.watchlist_digest`: `off`, `daily`, or `weekly`
 
+When any known preference key above is present, `null` is rejected as invalid.
+
 Request:
 
 ```json

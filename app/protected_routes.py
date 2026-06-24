@@ -318,13 +318,14 @@ def _preference_row(session: Session, user: User) -> UserPreference:
 
 def _validated_preferences(preferences: dict[str, object]) -> dict[str, object]:
     issues: list[dict[str, str]] = []
-    risk_profile = preferences.get("risk_profile")
     valid_risk_profiles = {"conservative", "balanced", "aggressive"}
-    if risk_profile is not None and risk_profile not in valid_risk_profiles:
-        issues.append({"field": "preferences.risk_profile", "reason": "invalid_value"})
+    if "risk_profile" in preferences:
+        risk_profile = preferences["risk_profile"]
+        if risk_profile not in valid_risk_profiles:
+            issues.append({"field": "preferences.risk_profile", "reason": "invalid_value"})
 
-    notifications = preferences.get("notifications")
-    if notifications is not None:
+    if "notifications" in preferences:
+        notifications = preferences["notifications"]
         if not isinstance(notifications, dict):
             issues.append({"field": "preferences.notifications", "reason": "invalid_type"})
         else:
@@ -346,17 +347,19 @@ def _validate_notification_preferences(
     notifications: dict[str, object],
     issues: list[dict[str, str]],
 ) -> None:
-    email_enabled = notifications.get("email_enabled")
-    if email_enabled is not None and not isinstance(email_enabled, bool):
-        issues.append(
-            {"field": "preferences.notifications.email_enabled", "reason": "invalid_type"}
-        )
+    if "email_enabled" in notifications:
+        email_enabled = notifications["email_enabled"]
+        if not isinstance(email_enabled, bool):
+            issues.append(
+                {"field": "preferences.notifications.email_enabled", "reason": "invalid_type"}
+            )
 
-    watchlist_digest = notifications.get("watchlist_digest")
-    if watchlist_digest is not None and watchlist_digest not in {"off", "daily", "weekly"}:
-        issues.append(
-            {"field": "preferences.notifications.watchlist_digest", "reason": "invalid_value"}
-        )
+    if "watchlist_digest" in notifications:
+        watchlist_digest = notifications["watchlist_digest"]
+        if watchlist_digest not in {"off", "daily", "weekly"}:
+            issues.append(
+                {"field": "preferences.notifications.watchlist_digest", "reason": "invalid_value"}
+            )
 
 
 def _watchlist_rows(session: Session, user: User) -> list[Watchlist]:
