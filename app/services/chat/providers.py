@@ -230,13 +230,14 @@ def _system_prompt() -> str:
 
 def _user_prompt(*, request: ChatProviderInput, baseline: ChatResponse) -> str:
     candidate = request.candidate
+    citable_evidence = _citable_evidence(request=request, baseline=baseline)
     evidence_lines = [
         (
             f"- id={item.id}; type={item.type}; title={item.title}; "
             f"summary={item.summary}; source={item.source_name}; "
             f"published_at={item.published_at}; as_of_date={item.as_of_date}"
         )
-        for item in request.evidence[:6]
+        for item in citable_evidence
     ]
     reason_lines = [
         (
@@ -261,11 +262,25 @@ def _user_prompt(*, request: ChatProviderInput, baseline: ChatResponse) -> str:
             "\n".join(reason_lines) or "- none",
             "Evidence:",
             "\n".join(evidence_lines) or "- none",
-            f"Required citation IDs to prefer: {citation_hint}",
+            f"Allowed citation IDs: {citation_hint}",
             "Draft a concise Korean explanation in 4-7 sentences. "
-            "Focus on evidence-based review points and avoid unsupported conclusions.",
+            "Focus on evidence-based review points and avoid unsupported conclusions. "
+            "Cite only the allowed citation IDs shown above.",
         ]
     )
+
+
+def _citable_evidence(
+    *,
+    request: ChatProviderInput,
+    baseline: ChatResponse,
+) -> list[StockEvidenceItemResponse]:
+    evidence_by_id = {item.id: item for item in request.evidence}
+    return [
+        evidence_by_id[citation.evidence_id]
+        for citation in baseline.citations
+        if citation.evidence_id in evidence_by_id
+    ]
 
 
 def _citation_ids(citations: list[ChatCitation]) -> list[str]:
