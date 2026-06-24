@@ -69,6 +69,26 @@ def test_backend_ci_checks_lambda_packaging_script_on_pr() -> None:
     assert 'test "$first_hash" = "$second_hash"' in workflow
 
 
+def test_backend_dev_deploy_checks_assumed_account_matches_backend() -> None:
+    workflow = (
+        REPOSITORY_ROOT / ".github/workflows/backend-dev-deploy.yml"
+    ).read_text(encoding="utf-8")
+    deployment_doc = (
+        REPOSITORY_ROOT / "docs/engineering/DEPLOYMENT_BOOTSTRAP.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Verify deploy account matches Terraform backend" in workflow
+    assert 'DEPLOY_ROLE_ARN: ${{ vars.AWS_DEV_DEPLOY_ROLE_ARN }}' in workflow
+    assert "aws sts get-caller-identity --query Account --output text" in workflow
+    assert "stockbrief-terraform-state-" in workflow
+    assert "role_account" in workflow
+    assert "backend_account" in workflow
+    assert 'Assumed AWS account ${actual_account} does not match deploy role account' in workflow
+    assert 'Assumed AWS account ${actual_account} does not match Terraform backend account' in workflow
+    assert "Before Terraform init, `backend-dev-deploy` compares the account" in deployment_doc
+    assert "cannot accidentally deploy against a backend that" in deployment_doc
+
+
 def test_external_api_secret_update_script_handles_secret_payload_safely() -> None:
     script = (REPOSITORY_ROOT / "scripts/update_external_api_secret.sh").read_text(
         encoding="utf-8"

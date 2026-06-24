@@ -33,6 +33,37 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEV_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify deploy account matches Terraform backend
+        env:
+          DEPLOY_ROLE_ARN: ${{ vars.AWS_DEV_DEPLOY_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+
+          actual_account="$(aws sts get-caller-identity --query Account --output text)"
+          role_account="$(printf '%s' "$DEPLOY_ROLE_ARN" | sed -n 's/^arn:aws:iam::\([0-9]\{12\}\):role\/.*$/\1/p')"
+          backend_bucket="$(awk -F'"' '/bucket[[:space:]]*=/{print $2; exit}' "${TF_DIR}/backend.tf")"
+          backend_account="$(printf '%s' "$backend_bucket" | sed -n 's/^stockbrief-terraform-state-\([0-9]\{12\}\)-.*$/\1/p')"
+
+          if [ -z "$role_account" ]; then
+            echo "::error::Could not parse AWS account id from AWS_DEV_DEPLOY_ROLE_ARN."
+            exit 1
+          fi
+
+          if [ -z "$backend_account" ]; then
+            echo "::error::Could not parse AWS account id from Terraform backend bucket: ${backend_bucket}"
+            exit 1
+          fi
+
+          if [ "$actual_account" != "$role_account" ]; then
+            echo "::error::Assumed AWS account ${actual_account} does not match deploy role account ${role_account}."
+            exit 1
+          fi
+
+          if [ "$actual_account" != "$backend_account" ]; then
+            echo "::error::Assumed AWS account ${actual_account} does not match Terraform backend account ${backend_account} from ${backend_bucket}."
+            exit 1
+          fi
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
