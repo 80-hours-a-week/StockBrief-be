@@ -512,6 +512,18 @@ def test_github_deploy_role_policy_scopes_prefix_named_resources() -> None:
     assert "stockbrief-<environment>-*" in deployment_doc
     assert "wildcard fallback statement" in deployment_doc
     assert "Prefer adding a narrow" in deployment_doc
+    assert "PR #164 covers only the apply blocker" in deployment_doc
+    assert "It does not close #52 by itself" in deployment_doc
+    assert "`logs:TagResource` addition" in deployment_doc
+    assert "future narrowing candidate in #52" in deployment_doc
+    assert "managed master user password secrets" in deployment_doc
+    assert "AWS's" in deployment_doc
+    assert "`rds!db-*` naming" in deployment_doc
+    assert "After PR #164 merges" in deployment_doc
+    assert "live" in deployment_doc
+    assert "deploy role inline policy" in deployment_doc
+    assert "no longer fails on" in deployment_doc
+    assert "`rds!db-*` exception remains part of the least-privilege" in deployment_doc
     assert "Keep the least-privilege hardening issue open" in deployment_doc
     assert "`backend-dev-deploy` verification are complete" in deployment_doc
 
