@@ -319,6 +319,10 @@ def test_chat_bedrock_prompt_only_includes_guard_allowed_evidence() -> None:
     assert "Allowed citation IDs: ev_used_a, ev_used_b" in prompt
     assert "ev_used_a" in prompt
     assert "ev_used_b" in prompt
+    assert "title=분기보고서" in prompt
+    assert "summary=공시 근거입니다." in prompt
+    assert "title=재무 요약" in prompt
+    assert "summary=실적 근거입니다." in prompt
     assert "ev_unused" not in prompt
 
 
