@@ -306,6 +306,27 @@ Record the classification in the PR body before apply:
 | RDS in-place update | Confirm the change is not a cost, deletion, backup, or networking regression. |
 | Lambda package hash update | Confirm it is caused by the current backend artifact build. |
 
+Useful read-only checks:
+
+```bash
+cd infra/terraform
+
+terraform state show module.amplify.aws_amplify_app.this
+terraform state show module.cognito.aws_cognito_user_pool_client.client
+terraform state show module.rds.aws_db_instance.this
+terraform state show module.api_lambda.aws_lambda_function.api
+
+aws ec2 describe-nat-gateways \
+  --filter "Name=tag:Name,Values=stockbrief-dev-lambda-egress-nat" \
+  --profile stockbrief-dev \
+  --region ap-northeast-2
+
+aws ec2 describe-route-tables \
+  --filters "Name=tag:Name,Values=stockbrief-dev-lambda-nat-egress-rt" \
+  --profile stockbrief-dev \
+  --region ap-northeast-2
+```
+
 If any non-NAT item is unexplained, do not apply. Either update the PR with the
 expected reason, split the unrelated change into its own PR, or restore the
 drifted value before creating the NAT Gateway.
