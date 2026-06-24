@@ -126,6 +126,22 @@ def test_dev_account_transition_requires_backend_deploy_result_on_issue_52() -> 
     assert "record the success or expected guard failure on #52" in terraform_readme
 
 
+def test_dev_live_ingestion_enablement_is_tracked_after_low_cost_bootstrap() -> None:
+    deploy_tfvars = json.loads(_read("envs/dev/deploy.auto.tfvars.json"))
+    terraform_readme = _read("README.md")
+
+    assert deploy_tfvars["enable_lambda_nat_egress"] is False
+    assert deploy_tfvars["lambda_nat_public_subnet_id"] == ""
+    assert deploy_tfvars["lambda_nat_route_subnet_ids"] == []
+    assert deploy_tfvars["enable_ingestion_scheduler"] is False
+    assert deploy_tfvars["ingestion_schedule_jobs"] == []
+    assert "For PR #161" in terraform_readme
+    assert "NAT egress and EventBridge Scheduler stay intentionally" in terraform_readme
+    assert "Track live ingestion" in terraform_readme
+    assert "cost approval" in terraform_readme
+    assert "runbook smoke evidence through #163" in terraform_readme
+
+
 def test_agentcore_runtime_module_uses_cloudformation_resources() -> None:
     agentcore_tf = _read("modules/agentcore_runtime/main.tf")
     root_main_tf = _read("main.tf")

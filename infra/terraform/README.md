@@ -95,6 +95,10 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    are stored in Secrets Manager and the target ticker/job list is reviewed.
    Keep `enable_lambda_nat_egress = false` until live provider ingestion is
    approved because NAT Gateway creates hourly and data processing charges.
+   For PR #161, both NAT egress and EventBridge Scheduler stay intentionally
+   disabled for the low-cost dev account bootstrap. Track live ingestion
+   enablement, cost approval, and runbook smoke evidence through #163 before
+   changing either toggle.
    The committed dev `deploy.auto.tfvars.json` follows this low-cost,
    local-only bootstrap posture: Amplify is disabled and Cognito/CORS entries
    include only localhost and loopback development origins. If a hosted dev FE
