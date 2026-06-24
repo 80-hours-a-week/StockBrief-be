@@ -380,10 +380,12 @@ creation or not consistently supported by the AWS API. This currently includes
 API Gateway, Amplify, CloudFormation, Cognito, EC2 networking, KMS, RDS,
 CloudWatch alarm reads, log group creation/listing, SNS subscription cleanup,
 and STS caller identity.
-API Gateway stage creation also requires `apigateway:TagResource` when
-Terraform applies tags to the `$default` stage. Keep API Gateway tag actions
-enumerated in the fallback statement until the service-specific ARN behavior is
-verified enough to split them into a narrower statement.
+API Gateway stage creation can fail with an `apigateway:TagResource`
+AccessDenied error when Terraform applies tags to the `$default` stage, but
+Access Analyzer reports `apigateway:TagResource` and
+`apigateway:UntagResource` as invalid IAM actions. Keep the API Gateway
+management plane on `apigateway:*` in the fallback statement until AWS exposes
+an Analyzer-valid narrower action set that still covers stage tagging.
 
 PR #164 covers only the apply blocker found after the new dev account
 transition. It does not close #52 by itself. The `logs:TagResource` addition
