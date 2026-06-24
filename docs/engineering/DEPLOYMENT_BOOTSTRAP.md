@@ -393,6 +393,9 @@ before widening the wildcard fallback. Prefer adding a narrow
 `stockbrief-<environment>-*` ARN statement when the AWS service supports it.
 For policy edits, also validate the generated IAM policy with AWS Access
 Analyzer and resolve `ERROR` findings before applying it to the deploy role.
+Keep the least-privilege hardening issue open until the bootstrap rerun and
+`backend-dev-deploy` verification are complete, then record the result on that
+issue before deciding whether it is done.
 
 ## New Environment Checklist
 
