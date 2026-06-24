@@ -445,6 +445,14 @@ def test_github_deploy_role_policy_scopes_prefix_named_resources() -> None:
     assert _statement_resources(deploy_policy, "DeploySecretsByPrefix") == {
         "arn:aws:secretsmanager:${region}:${account_id}:secret:${resource_name_prefix}/*"
     }
+    assert _statement_resources(deploy_policy, "DeployRdsManagedMasterUserSecret") == {
+        "arn:aws:secretsmanager:${region}:${account_id}:secret:rds!db-*"
+    }
+    assert _statement_actions(deploy_policy, "DeployRdsManagedMasterUserSecret") == {
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:TagResource",
+    }
     assert _statement_resources(deploy_policy, "DeploySqsQueuesByPrefix") == {
         "arn:aws:sqs:${region}:${account_id}:${resource_name_prefix}-*"
     }
@@ -487,6 +495,7 @@ def test_github_deploy_role_policy_scopes_prefix_named_resources() -> None:
         "ec2:AssociateRouteTable",
         "rds:CreateDBProxy",
         "logs:CreateLogGroup",
+        "logs:TagResource",
         "cloudwatch:DescribeAlarms",
     ]:
         assert action in wildcard_actions
