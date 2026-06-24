@@ -88,17 +88,19 @@ def test_new_aws_bootstrap_does_not_pin_old_dev_account() -> None:
     backend_tf = _read("backend.tf")
     deploy_tfvars = _read("envs/dev/deploy.auto.tfvars.json")
 
+    assert "560271561793" not in backend_tf
+    assert "560271561793" not in deploy_tfvars
     assert "420615923610" not in backend_tf
     assert "420615923610" not in deploy_tfvars
     assert "REPLACE_WITH_ACCOUNT_ID" not in backend_tf
-    assert "stockbrief-terraform-state-" in backend_tf
+    assert "stockbrief-terraform-state-217139788460-ap-northeast-2" in backend_tf
     assert "vpc-0fdabc1f990027c99" not in deploy_tfvars
     assert "subnet-08f5ab10f709efd3e" not in deploy_tfvars
     assert "subnet-0940fc5ef61437e6d" not in deploy_tfvars
-    assert '"vpc_id": "vpc-07b9f3920d93b65e1"' in deploy_tfvars
-    assert "subnet-08d89333a3c3e2924" in deploy_tfvars
-    assert "subnet-0e10680a556fa9ca8" in deploy_tfvars
-    assert "rtb-01a4330966a81395a" in deploy_tfvars
+    assert '"vpc_id": "vpc-03b24c84216090769"' in deploy_tfvars
+    assert "subnet-048cb5abccdf777d1" in deploy_tfvars
+    assert "subnet-04a3c75b6a6ba6b99" in deploy_tfvars
+    assert "rtb-0de4e4c9b811cd39c" in deploy_tfvars
 
 
 def test_agentcore_runtime_module_uses_cloudformation_resources() -> None:
@@ -228,19 +230,8 @@ def test_ingestion_pipeline_resources_are_wired_with_scheduler_disabled_by_defau
     assert 'output "ingestion_dlq_url"' in outputs_tf
     assert 'output "ingestion_scheduler_names"' in outputs_tf
     assert "enable_ingestion_scheduler          = false" in dev_tfvars
-    assert deploy_tfvars["enable_ingestion_scheduler"] is True
-    assert deploy_tfvars["ingestion_schedule_jobs"] == [
-        {
-            "provider": "OpenDART",
-            "tickers": ["005930"],
-            "schedule_expression": "cron(0 18 ? * MON-FRI *)",
-        },
-        {
-            "provider": "NAVER_NEWS",
-            "tickers": ["005930"],
-            "schedule_expression": "cron(0 18 ? * MON-FRI *)",
-        },
-    ]
+    assert deploy_tfvars["enable_ingestion_scheduler"] is False
+    assert deploy_tfvars["ingestion_schedule_jobs"] == []
 
 
 def test_lambda_nat_egress_is_toggleable_and_disabled_by_default() -> None:

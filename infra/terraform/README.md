@@ -306,14 +306,14 @@ lambda_nat_public_subnet_id = "subnet-public-for-nat"
 lambda_nat_route_subnet_ids = ["subnet-lambda-a", "subnet-lambda-b"]
 ```
 
-Current dev live ingestion verification uses:
+For live ingestion verification, set the values for the target AWS account:
 
 ```hcl
 enable_lambda_nat_egress    = true
-lambda_nat_public_subnet_id = "subnet-0c816842b11dfd2e7"
+lambda_nat_public_subnet_id = "subnet-public-for-nat"
 lambda_nat_route_subnet_ids = [
-  "subnet-08d89333a3c3e2924",
-  "subnet-0e10680a556fa9ca8",
+  "subnet-lambda-private-a",
+  "subnet-lambda-private-b",
 ]
 ```
 
