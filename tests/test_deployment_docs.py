@@ -442,6 +442,16 @@ def test_github_deploy_role_policy_scopes_prefix_named_resources() -> None:
     assert _statement_resources(deploy_policy, "DeployLambdaFunctionByPrefix") == {
         "arn:aws:lambda:${region}:${account_id}:function:${resource_name_prefix}-*"
     }
+    assert _statement_resources(deploy_policy, "DeployLogGroupsByPrefix") == {
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/amplify/${resource_name_prefix}-web",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/amplify/${resource_name_prefix}-web:*",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/apigateway/${resource_name_prefix}-http-api",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/apigateway/${resource_name_prefix}-http-api:*",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/${resource_name_prefix}-api",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/${resource_name_prefix}-api:*",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/rds/${resource_name_prefix}-postgres",
+        "arn:aws:logs:${region}:${account_id}:log-group:/aws/rds/${resource_name_prefix}-postgres:*",
+    }
     assert _statement_resources(deploy_policy, "DeploySecretsByPrefix") == {
         "arn:aws:secretsmanager:${region}:${account_id}:secret:${resource_name_prefix}/*"
     }
@@ -479,6 +489,7 @@ def test_github_deploy_role_policy_scopes_prefix_named_resources() -> None:
         ("DeploySchedulesByPrefix", "scheduler:CreateSchedule"),
         ("DeploySnsTopicsByPrefix", "sns:CreateTopic"),
         ("DeployCloudWatchAlarmsByPrefix", "cloudwatch:PutMetricAlarm"),
+        ("DeployLogGroupsByPrefix", "logs:PutRetentionPolicy"),
     ]:
         assert action in _statement_actions(deploy_policy, scoped_sid)
         assert action not in wildcard_actions
