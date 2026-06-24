@@ -87,6 +87,8 @@ def test_backend_dev_deploy_checks_assumed_account_matches_backend() -> None:
     assert 'Assumed AWS account ${actual_account} does not match Terraform backend account' in workflow
     assert "Before Terraform init, `backend-dev-deploy` compares the account" in deployment_doc
     assert "cannot accidentally deploy against a backend that" in deployment_doc
+    assert "During account transition work, this failure is the expected guardrail" in deployment_doc
+    assert "not as a deployment regression" in deployment_doc
 
 
 def test_external_api_secret_update_script_handles_secret_payload_safely() -> None:
