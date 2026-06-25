@@ -19,12 +19,29 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_index(
-        "ix_chat_messages_session_id",
-        "chat_messages",
-        ["session_id"],
-    )
+    context = op.get_context()
+    if context.dialect.name == "postgresql":
+        with context.autocommit_block():
+            op.create_index(
+                "ix_chat_messages_session_id",
+                "chat_messages",
+                ["session_id"],
+                postgresql_concurrently=True,
+            )
+        return
+
+    op.create_index("ix_chat_messages_session_id", "chat_messages", ["session_id"])
 
 
 def downgrade() -> None:
+    context = op.get_context()
+    if context.dialect.name == "postgresql":
+        with context.autocommit_block():
+            op.drop_index(
+                "ix_chat_messages_session_id",
+                table_name="chat_messages",
+                postgresql_concurrently=True,
+            )
+        return
+
     op.drop_index("ix_chat_messages_session_id", table_name="chat_messages")

@@ -152,6 +152,9 @@ def test_chat_messages_session_id_index_migration_is_declared() -> None:
     assert "ix_chat_messages_session_id" in migration
     assert '"chat_messages"' in migration
     assert '"session_id"' in migration
+    assert 'context.dialect.name == "postgresql"' in migration
+    assert "context.autocommit_block()" in migration
+    assert "postgresql_concurrently=True" in migration
 
 
 def test_db_schema_documents_input_hash_migration_precheck() -> None:
