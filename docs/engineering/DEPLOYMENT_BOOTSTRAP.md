@@ -28,7 +28,7 @@ be lowercase: `https://token.actions.githubusercontent.com`, and the audience is
 ## Prerequisites
 
 - AWS CLI authenticated to the target AWS account.
-- GitHub CLI authenticated with permission to write repository variables.
+- GitHub CLI authenticated with permission to write GitHub Environment variables.
 - Permission to create or update IAM OIDC providers, IAM roles, S3 buckets, and
   DynamoDB tables in the target AWS account.
 - Permission to set variables on `80-hours-a-week/StockBrief-be`.
@@ -72,7 +72,7 @@ The script creates or updates:
 - IAM deploy role scoped to `80-hours-a-week/StockBrief-be` `main`.
 - GitHub Environment named `dev` with a custom deployment branch policy that
   allows only `main`.
-- GitHub repository variables:
+- GitHub Environment variables:
   - `AWS_DEV_DEPLOY_ROLE_ARN`
   - `OPERATIONAL_ALARM_EMAILS_JSON`
 
@@ -80,7 +80,7 @@ The deploy role policy is intentionally broad enough for the current dev
 Terraform deployment. Tighten it after the deployment surface stabilizes.
 
 `--alarm-emails-json` must be valid JSON and must be an array of strings. The
-script validates this with Python before writing the GitHub repository variable.
+script validates this with Python before writing the GitHub Environment variable.
 
 ## After Bootstrap
 
@@ -194,17 +194,18 @@ intentionally sharing the same Terraform state.
 Before Terraform init, `backend-dev-deploy` compares the account assumed from
 the resolved deploy role with the account encoded in the selected Terraform
 state bucket name. The workflow stops immediately if those accounts differ, so
-a repository variable update cannot accidentally deploy against a backend that
+a deploy role variable update cannot accidentally deploy against a backend that
 still belongs to another AWS account.
 During account transition work, this failure is the expected guardrail when
 `AWS_<TARGET_ENV>_DEPLOY_ROLE_ARN` points at one account but
 `backends/<target_env>.hcl` still points at another state bucket. Treat the
 failure as a configuration handoff signal, not as a deployment regression.
 
-`AWS_<TARGET_ENV>_DEPLOY_ROLE_ARN` and `OPERATIONAL_ALARM_EMAILS_JSON` may live
-as repository variables or environment variables. Prefer environment variables
-when the repository has multiple deploy environments. Add GitHub Environment
-required reviewers later if the team wants manual approval before dev apply.
+`AWS_<TARGET_ENV>_DEPLOY_ROLE_ARN` and `OPERATIONAL_ALARM_EMAILS_JSON` must live
+in the matching GitHub Environment variables. Do not store team-specific deploy
+role ARNs, backend config, tfvars, or alarm recipients in repository-level
+variables. Add GitHub Environment required reviewers later if the team wants
+manual approval before dev apply.
 
 ## Dev Cost Pause And Resume Runbook
 
@@ -376,7 +377,7 @@ backend changes. The role is separate from the administrator identity used to ru
 bootstrap:
 
 - Bootstrap identity: creates the first state bucket, lock table, OIDC provider,
-  deploy role, and GitHub variables.
+  deploy role, and GitHub Environment variables.
 - Deploy role: assumed by GitHub Actions jobs that target the `dev` Environment.
   The `dev` Environment branch policy allows only `main` deployments.
 

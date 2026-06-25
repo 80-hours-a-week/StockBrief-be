@@ -10,7 +10,7 @@ Creates or updates:
   - DynamoDB Terraform lock table
   - GitHub Actions OIDC provider
   - GitHub Actions deploy IAM role
-  - GitHub repository variables used by backend-dev-deploy.yml
+  - GitHub Environment variables used by backend-dev-deploy.yml
 
 Example:
   scripts/bootstrap_github_oidc.sh \
@@ -712,14 +712,9 @@ ${obsolete_branch_policies}
 EOF
 fi
 
-echo "Setting GitHub repository variables on ${repo_full_name}"
-run_change gh variable set "$deploy_role_var" --repo "$repo_full_name" --body "$role_arn"
-
-if [ "$deploy_role_var" != "AWS_DEV_DEPLOY_ROLE_ARN" ] && [ "$environment" = "dev" ]; then
-  run_change gh variable set AWS_DEV_DEPLOY_ROLE_ARN --repo "$repo_full_name" --body "$role_arn"
-fi
-
-run_change gh variable set OPERATIONAL_ALARM_EMAILS_JSON --repo "$repo_full_name" --body "$alarm_emails_json"
+echo "Setting GitHub Environment variables on ${repo_full_name}/${environment}"
+run_change gh variable set "$deploy_role_var" --repo "$repo_full_name" --env "$environment" --body "$role_arn"
+run_change gh variable set OPERATIONAL_ALARM_EMAILS_JSON --repo "$repo_full_name" --env "$environment" --body "$alarm_emails_json"
 
 cat <<SUMMARY
 
@@ -731,7 +726,7 @@ Terraform backend:
   region         = "${region}"
   dynamodb_table = "${lock_table}"
 
-GitHub variables:
+GitHub Environment variables (${environment}):
   ${deploy_role_var}=${role_arn}
   OPERATIONAL_ALARM_EMAILS_JSON=<configured JSON array>
 

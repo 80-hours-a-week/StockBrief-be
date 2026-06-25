@@ -652,7 +652,7 @@ def test_bootstrap_reconciles_dev_environment_branch_policy_to_main_only() -> No
 
     policy_reconciliation = bootstrap_script[
         bootstrap_script.index("obsolete_branch_policies=") :
-        bootstrap_script.index("echo \"Setting GitHub repository variables")
+        bootstrap_script.index("echo \"Setting GitHub Environment variables")
     ]
 
     assert "obsolete_branch_policies" in policy_reconciliation
