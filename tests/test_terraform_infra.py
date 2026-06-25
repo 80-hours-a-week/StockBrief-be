@@ -10,6 +10,28 @@ def _read(path: str) -> str:
     return (TERRAFORM_ROOT / path).read_text(encoding="utf-8")
 
 
+def test_multi_account_dev_profile_templates_are_available() -> None:
+    variables_tf = _read("variables.tf")
+    dev_backend = _read("backends/dev.hcl")
+    template_backend = _read("backends/dev-template.hcl.example")
+    template_tfvars = json.loads(_read("envs/dev-template/deploy.auto.tfvars.json.example"))
+
+    assert "dev-<member>" in variables_tf
+    assert 'regex("^dev-[a-z0-9][a-z0-9-]*$"' in variables_tf
+    assert 'bucket         = "stockbrief-terraform-state-217139788460-ap-northeast-2"' in dev_backend
+    assert 'key            = "stockbrief/dev/terraform.tfstate"' in dev_backend
+    assert "REPLACE_WITH_ACCOUNT_ID" in template_backend
+    assert "REPLACE_WITH_TARGET_ENV" in template_backend
+    assert template_tfvars["environment"] == "REPLACE_WITH_TARGET_ENV"
+    assert template_tfvars["enable_amplify"] is False
+    assert template_tfvars["enable_lambda_nat_egress"] is False
+    assert template_tfvars["enable_ingestion_scheduler"] is False
+    assert template_tfvars["enable_rds_proxy"] is False
+    assert template_tfvars["db_deletion_protection"] is False
+    assert template_tfvars["db_skip_final_snapshot"] is True
+    assert template_tfvars["vpc_id"] == "REPLACE_WITH_VPC_ID"
+
+
 def test_amplify_module_targets_frontend_repository_root() -> None:
     main_tf = _read("modules/amplify/main.tf")
 
