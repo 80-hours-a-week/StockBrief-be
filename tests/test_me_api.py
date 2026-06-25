@@ -10,7 +10,7 @@ from app.auth import CognitoClaims, _upsert_user_from_claims, get_current_user, 
 from app.config import Settings, get_settings
 from app.db import get_db_session
 from app.main import app
-from app.orm import ChatMessage, User, Watchlist
+from app.orm import ChatMessage, User, UserPreference, Watchlist
 
 
 def _auth_user(session: Session, sub: str = "cognito-sub-1") -> User:
@@ -278,6 +278,31 @@ def test_preferences_reject_invalid_known_values(seeded_session: Session) -> Non
             {"field": "preferences.notifications.email_enabled", "reason": "invalid_type"},
             {"field": "preferences.notifications.watchlist_digest", "reason": "invalid_value"},
         ]
+        get_response = client.get("/v1/me/preferences")
+        assert get_response.status_code == 200
+        assert get_response.json()["preferences"] == {}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_preferences_reject_invalid_request_without_creating_empty_row(
+    seeded_session: Session,
+) -> None:
+    user_sub = "new-preferences-user"
+    client = _authenticated_client(seeded_session, sub=user_sub)
+    user = seeded_session.scalars(select(User).where(User.cognito_sub == user_sub)).one()
+    try:
+        response = client.put(
+            "/v1/me/preferences",
+            json={"preferences": {"risk_profile": "certain"}},
+        )
+
+        assert response.status_code == 400
+        preference_row = seeded_session.scalars(
+            select(UserPreference).where(UserPreference.user_id == user.id)
+        ).first()
+        assert preference_row is None
+
         get_response = client.get("/v1/me/preferences")
         assert get_response.status_code == 200
         assert get_response.json()["preferences"] == {}

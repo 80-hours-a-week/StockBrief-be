@@ -65,8 +65,9 @@ def put_preferences(
     session: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> UserPreferencesResponse:
+    validated_preferences = _validated_preferences(request.preferences)
     preferences = _preference_row(session, current_user)
-    preferences.preferences = _validated_preferences(request.preferences)
+    preferences.preferences = validated_preferences
     session.commit()
     session.refresh(preferences)
     return UserPreferencesResponse(preferences=dict(preferences.preferences or {}))
