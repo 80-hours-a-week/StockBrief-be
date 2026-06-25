@@ -50,6 +50,13 @@ jobs:
           if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", target_env):
               print(f"Invalid target_env: {target_env}", file=sys.stderr)
               sys.exit(1)
+          if target_env != "dev" and not target_env.startswith("dev-"):
+              print(
+                  "backend-dev-deploy only accepts dev or dev-* target_env values. "
+                  f"Use a dedicated workflow for {target_env}.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
 
           variables = json.loads(os.environ["GITHUB_VARIABLES_JSON"])
           env_key = f"AWS_{target_env.upper().replace('-', '_')}_DEPLOY_ROLE_ARN"

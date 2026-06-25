@@ -150,9 +150,10 @@ API Gateway, Cognito, Secrets Manager, and alarms are managed by Terraform.
 ## Deployment Flow After Bootstrap
 
 1. Merge backend changes into `main`, or manually run `backend-dev-deploy`.
-2. GitHub Actions resolves a deploy profile. Pushes to `main` use
-   `target_env=dev`; manual runs can choose another profile such as
-   `dev-junwoo`.
+2. GitHub Actions resolves a dev deploy profile. Pushes to `main` use
+   `target_env=dev`; manual runs can choose another dev profile such as
+   `dev-junwoo`. This workflow accepts only `dev` or `dev-*`; staging and prod
+   must use dedicated workflows.
 3. The workflow runs in the GitHub Environment named after `target_env`.
 4. The workflow assumes `AWS_<TARGET_ENV>_DEPLOY_ROLE_ARN` through OIDC. The
    legacy `AWS_DEV_DEPLOY_ROLE_ARN` fallback is allowed only for `target_env=dev`.

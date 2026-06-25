@@ -213,7 +213,7 @@ Environment key convention:
 | Environment | State key |
 | --- | --- |
 | `dev` | `stockbrief/dev/terraform.tfstate` |
-| `dev-junwoo` | `stockbrief/dev-junwoo/terraform.tfstate` |
+| `dev-<member>` | `stockbrief/dev-<member>/terraform.tfstate` |
 | `staging` | `stockbrief/staging/terraform.tfstate` |
 | `prod` | `stockbrief/prod/terraform.tfstate` |
 
@@ -221,12 +221,16 @@ Store account-specific backend files under `backends/`:
 
 ```text
 backends/dev.hcl
-backends/dev-junwoo.hcl
+backends/dev-<member>.hcl
 ```
 
 Use `backends/dev-template.hcl.example` and
 `envs/dev-template/deploy.auto.tfvars.json.example` when onboarding another
 team member's AWS account.
+Commit account-specific files only when the team explicitly accepts exposing
+non-secret AWS identifiers such as account ID, VPC ID, subnet ID, route table
+ID, Cognito domain prefix, and Amplify domain in the repository. Otherwise keep
+the real profile in an internal handoff location and leave only templates here.
 
 Use `terraform init -reconfigure` when selecting a different backend that already
 has the intended state or starts empty. Use `terraform init -migrate-state` only
@@ -778,7 +782,9 @@ Operational alarm rollout checklist:
 The dev backend deployment uses GitHub Actions OIDC instead of long-lived AWS
 access keys. The `backend-dev-deploy` workflow runs on pushes to `main` and on
 manual dispatch. Pushes to `main` deploy `target_env=dev`; manual dispatch can
-choose another profile such as `dev-junwoo`.
+choose another dev profile such as `dev-junwoo`. This workflow rejects
+non-dev profiles; staging and production must use separate workflows and
+approval policies.
 
 Because the job uses `environment: <target_env>`, the IAM OIDC trust policy
 expects the GitHub token subject to be:

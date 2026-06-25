@@ -16,6 +16,11 @@ Amplify를 연결하는 절차를 정리한다.
 - `infra/terraform/backends/dev-template.hcl.example`
 - `infra/terraform/envs/dev-template/deploy.auto.tfvars.json.example`
 
+이 저장소에는 기본 `dev` profile과 template만 둔다. 팀원별 실제 AWS
+account ID, VPC ID, subnet ID, route table ID, Amplify domain이 들어간
+profile 파일은 팀 정책상 공개 저장소 커밋이 허용될 때만 별도 PR로 추가한다.
+허용되지 않는 경우에는 내부 handoff 문서나 제한된 운영 저장소에서 관리한다.
+
 ## 생성 후 공유 템플릿
 
 새 dev 계정 리소스 생성이 끝나면 이 섹션을 팀 내부 공유용으로 복사해서
@@ -83,8 +88,8 @@ Amplify를 연결하는 절차를 정리한다.
 
 팀원이 자기 AWS 계정에 StockBrief dev 환경을 만들 때는 아래 값을 직접
 확인해서 profile 파일에 넣는다. 이 값들은 secret이 아니지만, 실제 계정 ID와
-리소스 ID는 PR 본문에 길게 노출하지 말고 필요한 설정 파일과 내부 핸드오프에만
-남긴다.
+리소스 ID는 공개 PR 본문에 길게 노출하지 말고 팀이 허용한 설정 파일 또는
+내부 핸드오프에만 남긴다.
 
 - 배포 프로필 이름: 예시 `dev-junwoo`, `dev-minsu`
 - AWS 계정 ID
@@ -151,6 +156,11 @@ Amplify를 연결하는 절차를 정리한다.
 
    VPC, subnet, route table, Cognito domain prefix, 사용할 AWS 리소스 옵션을
    실제 값으로 채운다.
+
+   실제 account/resource ID가 들어간 profile 파일은 공개 저장소에 바로
+   올리지 않는다. 팀 정책상 허용되는지 확인한 뒤 PR을 만들고, 허용되지 않으면
+   template만 repo에 두고 profile은 제한된 운영 문서나 별도 private handoff로
+   관리한다.
 
 6. 새 backend로 Terraform을 초기화한다.
 
@@ -253,6 +263,10 @@ infra/terraform/envs/dev-minsu/deploy.auto.tfvars.json
 `backends/dev-minsu.hcl`의 state bucket 계정 ID와
 `AWS_DEV_MINSU_DEPLOY_ROLE_ARN`의 계정 ID가 다르면 workflow가 즉시 실패해야
 정상이다. 이 실패는 잘못된 계정 배포를 막는 보호 장치다.
+
+`backend-dev-deploy`는 dev 전용 workflow라서 `target_env=dev` 또는
+`target_env=dev-*`만 허용한다. `staging`, `prod` 같은 환경은 별도 workflow와
+별도 approval 정책으로 만든다.
 
 ### 5. workflow 수동 실행
 

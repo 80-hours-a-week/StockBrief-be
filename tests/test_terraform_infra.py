@@ -22,6 +22,8 @@ def test_multi_account_dev_profile_templates_are_available() -> None:
     assert 'key            = "stockbrief/dev/terraform.tfstate"' in dev_backend
     assert "REPLACE_WITH_ACCOUNT_ID" in template_backend
     assert "REPLACE_WITH_TARGET_ENV" in template_backend
+    assert not (TERRAFORM_ROOT / "backends/dev-junwoo.hcl").exists()
+    assert not (TERRAFORM_ROOT / "envs/dev-junwoo/deploy.auto.tfvars.json").exists()
     assert template_tfvars["environment"] == "REPLACE_WITH_TARGET_ENV"
     assert template_tfvars["enable_amplify"] is False
     assert template_tfvars["enable_lambda_nat_egress"] is False

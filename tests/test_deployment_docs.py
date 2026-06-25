@@ -101,6 +101,8 @@ def test_backend_dev_deploy_supports_target_environment_profiles() -> None:
     ).read_text(encoding="utf-8")
 
     assert "Resolve deploy profile" in workflow
+    assert 'target_env != "dev" and not target_env.startswith("dev-")' in workflow
+    assert "backend-dev-deploy only accepts dev or dev-* target_env values" in workflow
     assert "AWS_{target_env.upper().replace('-', '_')}_DEPLOY_ROLE_ARN" in workflow
     assert "Missing deploy profile file(s):" in workflow
     assert 'os.path.join(os.environ["TF_DIR"], tf_var_file)' in workflow
@@ -111,6 +113,8 @@ def test_backend_dev_deploy_supports_target_environment_profiles() -> None:
     assert "target_env=dev-junwoo" in bootstrap_doc
     assert "backends/dev-junwoo.hcl" in bootstrap_doc
     assert "envs/dev-junwoo/deploy.auto.tfvars.json" in bootstrap_doc
+    assert "`target_env=dev` 또는" in bootstrap_doc
+    assert "`target_env=dev-*`만 허용" in bootstrap_doc
 
 
 def test_new_aws_bootstrap_documents_manual_amplify_account_switching() -> None:
