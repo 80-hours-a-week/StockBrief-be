@@ -245,9 +245,9 @@ terraform plan -var-file=envs/<target_env>/deploy.auto.tfvars.json
 
 For GitHub Actions, `backend-dev-deploy` resolves `target_env`, initializes
 Terraform with `backends/<target_env>.hcl`, and plans with
-`envs/<target_env>/deploy.auto.tfvars.json`. Add both files in one PR before
-running a team member account deployment to avoid applying one environment's
-variables to another environment's state.
+`envs/<target_env>/deploy.auto.tfvars.json`. For account-specific profiles,
+prefer GitHub Environment variables `TF_BACKEND_CONFIG_HCL` and `TFVARS_JSON`;
+the workflow creates both files on the runner when they are not committed.
 After a dev backend/account transition PR merges, run `backend-dev-deploy` and
 record the success or expected guard failure on #52 before treating the deploy
 role hardening work as complete.
@@ -812,6 +812,13 @@ Required GitHub repository variables:
 | --- | --- |
 | `AWS_<TARGET_ENV>_DEPLOY_ROLE_ARN` | Deploy role ARN printed by the bootstrap script |
 | `OPERATIONAL_ALARM_EMAILS_JSON` | JSON list of alarm recipient emails |
+| `TF_BACKEND_CONFIG_HCL` | Terraform backend HCL for the selected GitHub Environment |
+| `TFVARS_JSON` | Terraform variable JSON for the selected GitHub Environment |
+
+When building `TFVARS_JSON`, keep `amplify_cognito_redirect_uri` empty for the
+console-managed Amplify flow unless Terraform creates Amplify for that
+environment. Keep `agentcore_runtime_container_uri` empty unless
+`agentcore_runtime_enabled` is true and an AgentCore ECR image URI is ready.
 
 The workflow builds `dist/stockbrief-api-lambda.zip`, initializes Terraform with
 the selected S3 backend config, plans with the selected tfvars file, and applies

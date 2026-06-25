@@ -133,6 +133,8 @@ def test_dev_deploy_tfvars_documents_low_cost_local_only_bootstrap() -> None:
 
     assert deploy_tfvars["enable_amplify"] is False
     assert deploy_tfvars["amplify_cognito_redirect_uri"] == ""
+    assert deploy_tfvars["agentcore_runtime_enabled"] is False
+    assert deploy_tfvars["agentcore_runtime_container_uri"] == ""
     assert "amplifyapp.com" not in deploy_tfvars["cors_allowed_origins"]
     assert all("amplifyapp.com" not in url for url in deploy_tfvars["cognito_callback_urls"])
     assert all("amplifyapp.com" not in url for url in deploy_tfvars["cognito_logout_urls"])
@@ -140,6 +142,8 @@ def test_dev_deploy_tfvars_documents_low_cost_local_only_bootstrap() -> None:
     assert "local-only bootstrap posture" in terraform_readme
     assert "track the callback, logout, and CORS change through" in terraform_readme
     assert "#162" in terraform_readme
+    assert "keep `amplify_cognito_redirect_uri` empty" in terraform_readme
+    assert "Keep `agentcore_runtime_container_uri` empty" in terraform_readme
 
 
 def test_dev_account_transition_requires_backend_deploy_result_on_issue_52() -> None:

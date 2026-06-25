@@ -104,6 +104,10 @@ def test_backend_dev_deploy_supports_target_environment_profiles() -> None:
     assert 'target_env != "dev" and not target_env.startswith("dev-")' in workflow
     assert "backend-dev-deploy only accepts dev or dev-* target_env values" in workflow
     assert "AWS_{target_env.upper().replace('-', '_')}_DEPLOY_ROLE_ARN" in workflow
+    assert 'variables.get("TF_BACKEND_CONFIG_HCL")' in workflow
+    assert 'variables.get("TFVARS_JSON")' in workflow
+    assert "TFVARS_JSON environment must match target_env" in workflow
+    assert 'json.dump(parsed_tfvars, tfvars_file, ensure_ascii=False, indent=2)' in workflow
     assert "Missing deploy profile file(s):" in workflow
     assert 'os.path.join(os.environ["TF_DIR"], tf_var_file)' in workflow
     assert 'os.path.join(os.environ["TF_DIR"], tf_backend_config)' in workflow
@@ -115,6 +119,10 @@ def test_backend_dev_deploy_supports_target_environment_profiles() -> None:
     assert "envs/dev-junwoo/deploy.auto.tfvars.json" in bootstrap_doc
     assert "`target_env=dev` 또는" in bootstrap_doc
     assert "`target_env=dev-*`만 허용" in bootstrap_doc
+    assert "TF_BACKEND_CONFIG_HCL" in bootstrap_doc
+    assert "TFVARS_JSON" in bootstrap_doc
+    assert "`amplify_cognito_redirect_uri`는 `enable_amplify=false`" in bootstrap_doc
+    assert "`agentcore_runtime_container_uri`는 `agentcore_runtime_enabled=false`" in bootstrap_doc
 
 
 def test_new_aws_bootstrap_documents_manual_amplify_account_switching() -> None:

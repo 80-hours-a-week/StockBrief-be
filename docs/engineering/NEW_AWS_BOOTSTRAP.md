@@ -170,18 +170,30 @@ profile 파일은 팀 정책상 공개 저장소 커밋이 허용될 때만 별�
    terraform state list
    ```
 
-7. GitHub Actions의 `backend-dev-deploy` workflow를 수동 실행한다.
+7. GitHub Environment variable을 등록한다. 실제 account/resource ID가 들어간
+   profile 파일을 repo에 커밋하지 않는 기본 운영에서는 Actions가 이 값을
+   읽어서 runner 안에 임시 profile 파일을 만든다.
+
+   ```text
+   AWS_DEV_JUNWOO_DEPLOY_ROLE_ARN
+   OPERATIONAL_ALARM_EMAILS_JSON
+   TF_BACKEND_CONFIG_HCL
+   TFVARS_JSON
+   ```
+
+8. GitHub Actions의 `backend-dev-deploy` workflow를 수동 실행한다.
 
    ```text
    target_env=dev-junwoo
    ```
 
    workflow는 `AWS_DEV_JUNWOO_DEPLOY_ROLE_ARN`을 읽고,
-   `backends/dev-junwoo.hcl`로 Terraform backend를 초기화한 뒤
-   `envs/dev-junwoo/deploy.auto.tfvars.json`으로 plan/apply를 실행한다.
+   `TF_BACKEND_CONFIG_HCL`과 `TFVARS_JSON`으로 runner 안에
+   `backends/dev-junwoo.hcl`,
+   `envs/dev-junwoo/deploy.auto.tfvars.json`을 생성한 뒤 plan/apply를 실행한다.
 
-8. VPC, subnet, Cognito URL, Amplify URL이 확정되기 전에는
-   `envs/<target_env>/deploy.auto.tfvars.json`을 안전한 기본값으로 둔다.
+9. VPC, subnet, Cognito URL, Amplify URL이 확정되기 전에는 `TFVARS_JSON`을
+   안전한 기본값으로 둔다.
 
 ## GitHub Actions 설정 방법
 
@@ -251,14 +263,107 @@ OPERATIONAL_ALARM_EMAILS_JSON=["name@example.com"]
 OPERATIONAL_ALARM_EMAILS_JSON=["name1@example.com","name2@example.com"]
 ```
 
-### 4. profile 파일 확인
+### 4. Terraform backend variable 등록
 
-GitHub Actions가 읽는 파일은 `target_env` 이름과 정확히 맞아야 한다.
+GitHub Environment `dev-minsu`에 아래 variable을 등록한다.
+
+```text
+TF_BACKEND_CONFIG_HCL
+```
+
+값 예시:
+
+```hcl
+bucket         = "stockbrief-terraform-state-<account-id>-ap-northeast-2"
+key            = "stockbrief/dev-minsu/terraform.tfstate"
+region         = "ap-northeast-2"
+dynamodb_table = "stockbrief-terraform-locks"
+encrypt        = true
+```
+
+### 5. Terraform tfvars variable 등록
+
+GitHub Environment `dev-minsu`에 아래 variable을 등록한다.
+
+```text
+TFVARS_JSON
+```
+
+값 예시:
+
+```json
+{
+  "environment": "dev-minsu",
+  "aws_region": "ap-northeast-2",
+  "api_lambda_package_path": "../../dist/stockbrief-api-lambda.zip",
+  "cors_allowed_origins": "http://localhost:3000,http://127.0.0.1:3000",
+  "enable_amplify": false,
+  "amplify_repository_url": "https://github.com/80-hours-a-week/StockBrief-fe",
+  "amplify_branch_name": "main",
+  "amplify_cognito_redirect_uri": "",
+  "cognito_callback_urls": [
+    "http://localhost:3000/auth/callback"
+  ],
+  "cognito_logout_urls": [
+    "http://localhost:3000/account"
+  ],
+  "cognito_hosted_ui_domain_prefix": "stockbrief-dev-minsu-<account-id>",
+  "db_instance_class": "db.t4g.micro",
+  "db_allocated_storage_gb": 20,
+  "db_deletion_protection": false,
+  "db_skip_final_snapshot": true,
+  "db_backup_retention_period": 1,
+  "vpc_id": "<vpc-id>",
+  "db_subnet_ids": [
+    "<private-subnet-id-1>",
+    "<private-subnet-id-2>"
+  ],
+  "db_security_group_ids": [],
+  "rds_proxy_security_group_ids": [],
+  "enable_rds_proxy": false,
+  "lambda_subnet_ids": [
+    "<private-subnet-id-1>",
+    "<private-subnet-id-2>"
+  ],
+  "lambda_security_group_ids": [],
+  "vpc_endpoint_route_table_ids": [
+    "<private-route-table-id>"
+  ],
+  "enable_lambda_nat_egress": false,
+  "lambda_nat_public_subnet_id": "",
+  "lambda_nat_route_subnet_ids": [],
+  "agentcore_runtime_enabled": false,
+  "agentcore_runtime_container_uri": "",
+  "agentcore_network_mode": "PUBLIC",
+  "enable_ingestion_scheduler": false,
+  "ingestion_schedule_jobs": []
+}
+```
+
+`TFVARS_JSON`의 `environment` 값은 workflow의 `target_env`와 같아야 한다.
+다르면 배포가 중단된다.
+
+`amplify_cognito_redirect_uri`는 `enable_amplify=false`인 콘솔 관리 방식에서는
+빈 문자열로 둔다. 이 경우 Terraform은 `cognito_callback_urls`의 첫 번째 값을
+Amplify module 기본 redirect URI로 사용한다. Terraform으로 Amplify를 직접
+생성하는 별도 환경에서만 해당 환경의 redirect URI로 채운다.
+
+`agentcore_runtime_container_uri`는 `agentcore_runtime_enabled=false`이면 빈
+문자열로 둔다. AgentCore Runtime을 켜는 환경에서만 ECR image URI를 입력한다.
+
+### 6. profile 파일 생성 방식 확인
+
+GitHub Actions가 최종적으로 읽는 파일 이름은 `target_env`와 정확히 맞아야
+한다.
 
 ```text
 infra/terraform/backends/dev-minsu.hcl
 infra/terraform/envs/dev-minsu/deploy.auto.tfvars.json
 ```
+
+다만 팀원별 실제 profile 파일은 git에 커밋하지 않는다. workflow가
+`TF_BACKEND_CONFIG_HCL`과 `TFVARS_JSON`을 읽어서 runner 안에 위 파일을
+임시 생성한다.
 
 `backends/dev-minsu.hcl`의 state bucket 계정 ID와
 `AWS_DEV_MINSU_DEPLOY_ROLE_ARN`의 계정 ID가 다르면 workflow가 즉시 실패해야
@@ -268,7 +373,7 @@ infra/terraform/envs/dev-minsu/deploy.auto.tfvars.json
 `target_env=dev-*`만 허용한다. `staging`, `prod` 같은 환경은 별도 workflow와
 별도 approval 정책으로 만든다.
 
-### 5. workflow 수동 실행
+### 7. workflow 수동 실행
 
 GitHub에서 아래 경로로 이동한다.
 
@@ -286,14 +391,21 @@ target_env: dev-minsu
 workflow가 하는 일:
 
 - `AWS_DEV_MINSU_DEPLOY_ROLE_ARN`을 찾아 OIDC로 AWS role을 assume한다.
-- `backends/dev-minsu.hcl`로 Terraform state backend를 초기화한다.
-- `envs/dev-minsu/deploy.auto.tfvars.json`으로 plan/apply를 실행한다.
+- `TF_BACKEND_CONFIG_HCL`로 `backends/dev-minsu.hcl`을 임시 생성한다.
+- `TFVARS_JSON`으로 `envs/dev-minsu/deploy.auto.tfvars.json`을 임시 생성한다.
+- 생성된 profile 파일로 Terraform init/plan/apply를 실행한다.
 - Lambda package를 만들고 최신 BE를 배포한다.
 
-### 6. 실패했을 때 먼저 볼 것
+### 8. 실패했을 때 먼저 볼 것
 
 - `Could not resolve deploy role variable`:
   `AWS_<TARGET_ENV>_DEPLOY_ROLE_ARN` 이름이 틀렸거나 값이 없다.
+- `TF_BACKEND_CONFIG_HCL/TFVARS_JSON are not both set`:
+  GitHub Environment variable 둘 중 하나가 비어 있다.
+- `TFVARS_JSON is not valid JSON`:
+  JSON 문법이 깨졌거나 trailing comma가 있다.
+- `TFVARS_JSON environment must match target_env`:
+  `TFVARS_JSON` 안의 `environment`와 workflow 입력 `target_env`가 다르다.
 - `AssumeRoleWithWebIdentity`:
   GitHub Environment 이름과 IAM trust policy의 `environment:<target_env>`가
   맞지 않거나, Environment branch rule이 `main`을 허용하지 않는다.

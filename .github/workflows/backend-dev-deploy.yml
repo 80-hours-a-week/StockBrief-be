@@ -69,9 +69,54 @@ jobs:
 
           tf_var_file = f"envs/{target_env}/deploy.auto.tfvars.json"
           tf_backend_config = f"backends/{target_env}.hcl"
+          tf_var_path = os.path.join(os.environ["TF_DIR"], tf_var_file)
+          tf_backend_path = os.path.join(os.environ["TF_DIR"], tf_backend_config)
+
+          if not os.path.isfile(tf_backend_path) or not os.path.isfile(tf_var_path):
+              backend_config_hcl = variables.get("TF_BACKEND_CONFIG_HCL")
+              tfvars_json = variables.get("TFVARS_JSON")
+              if not backend_config_hcl or not tfvars_json:
+                  print(
+                      "Missing deploy profile file(s), and GitHub Environment "
+                      "variables TF_BACKEND_CONFIG_HCL/TFVARS_JSON are not both set.",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+              if "bucket" not in backend_config_hcl or "key" not in backend_config_hcl:
+                  print(
+                      "TF_BACKEND_CONFIG_HCL must include Terraform backend bucket and key.",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+              try:
+                  parsed_tfvars = json.loads(tfvars_json)
+              except json.JSONDecodeError as exc:
+                  print(f"TFVARS_JSON is not valid JSON: {exc}", file=sys.stderr)
+                  sys.exit(1)
+              if not isinstance(parsed_tfvars, dict):
+                  print("TFVARS_JSON must be a JSON object.", file=sys.stderr)
+                  sys.exit(1)
+              if parsed_tfvars.get("environment") != target_env:
+                  print(
+                      "TFVARS_JSON environment must match target_env "
+                      f"({target_env}).",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+              os.makedirs(os.path.dirname(tf_backend_path), exist_ok=True)
+              os.makedirs(os.path.dirname(tf_var_path), exist_ok=True)
+              with open(tf_backend_path, "w", encoding="utf-8") as backend_file:
+                  backend_file.write(backend_config_hcl.rstrip() + "\n")
+              with open(tf_var_path, "w", encoding="utf-8") as tfvars_file:
+                  json.dump(parsed_tfvars, tfvars_file, ensure_ascii=False, indent=2)
+                  tfvars_file.write("\n")
+
           required_files = [
-              os.path.join(os.environ["TF_DIR"], tf_var_file),
-              os.path.join(os.environ["TF_DIR"], tf_backend_config),
+              tf_var_path,
+              tf_backend_path,
           ]
           missing_files = [path for path in required_files if not os.path.isfile(path)]
           if missing_files:

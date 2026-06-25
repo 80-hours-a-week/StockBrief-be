@@ -160,6 +160,9 @@ API Gateway, Cognito, Secrets Manager, and alarms are managed by Terraform.
 5. The workflow packages Lambda, initializes Terraform with
    `backends/<target_env>.hcl`, plans with
    `envs/<target_env>/deploy.auto.tfvars.json`, and applies the selected stack.
+   If those profile files are not committed, the workflow creates them at
+   runtime from the selected GitHub Environment variables
+   `TF_BACKEND_CONFIG_HCL` and `TFVARS_JSON`.
 6. Update Secrets Manager values outside git when keys or DB connection values
    change.
 
@@ -183,6 +186,8 @@ infra/terraform/envs/<target_env>/deploy.auto.tfvars.json
 ```
 
 Add a profile pair before a team member account is eligible for manual deploy.
+For team member accounts, prefer storing the real profile body in GitHub
+Environment variables and letting the workflow create those files at runtime.
 Do not point two target environments at the same state key unless the team is
 intentionally sharing the same Terraform state.
 
