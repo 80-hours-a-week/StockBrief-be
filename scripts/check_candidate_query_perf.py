@@ -17,6 +17,11 @@ from app.services.candidate_service import CandidateService
 
 
 QUERY_NAMES = ("total", "as_of", "score_desc", "updated_desc", "volume_desc")
+OFFLINE_DEPENDENCY_NOTE = (
+    "Offline mode compiles CandidateService private query builders with a "
+    "statement-only session. Keep those builders session-independent, or move "
+    "query construction to a dedicated helper before adding session I/O."
+)
 
 
 def build_report(
@@ -66,6 +71,7 @@ def build_report(
             "limit": limit,
             "offset": offset,
         },
+        "notes": [OFFLINE_DEPENDENCY_NOTE],
         "queries": queries,
     }
 
@@ -139,6 +145,7 @@ def _compile_sql(statement: Any, *, dialect: Any) -> str:
 
 @contextmanager
 def _statement_only_session() -> Iterator[Session]:
+    # CandidateService query builders used here must only construct statements.
     yield cast(Session, None)
 
 

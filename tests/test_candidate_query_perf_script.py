@@ -31,6 +31,7 @@ def test_candidate_query_perf_report_builds_expected_query_groups() -> None:
     )
 
     assert report["executed"] is False
+    assert "session-independent" in report["notes"][0]
     assert [query["name"] for query in report["queries"]] == [
         "total",
         "as_of",

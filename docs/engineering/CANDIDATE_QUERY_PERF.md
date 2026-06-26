@@ -51,9 +51,17 @@ database and only prints the PostgreSQL `EXPLAIN` statements:
 .venv/bin/python scripts/check_candidate_query_perf.py
 ```
 
+Offline mode intentionally compiles the current `CandidateService` private query
+builders with a statement-only session. Keep those builders session-independent;
+if a builder starts reading from `self.session`, move query construction to a
+dedicated helper or use the `--execute` path with a real PostgreSQL session.
+
 To run the actual PostgreSQL plans, configure the same `DATABASE_URL` or
-`DATABASE_SECRET_ARN` settings used by the backend and pass `--execute`. The
-JSON output intentionally omits database URLs and secret values.
+`DATABASE_SECRET_ARN` settings used by the backend and pass `--execute`.
+`--execute` runs five `EXPLAIN ANALYZE` candidate queries, so use staging or an
+approved low-traffic window for shared environments. The JSON output
+intentionally omits database URLs and secret values; verify the saved report
+contains only SQL text and query plans before attaching it to an issue or PR.
 
 ```bash
 .venv/bin/python scripts/check_candidate_query_perf.py \
