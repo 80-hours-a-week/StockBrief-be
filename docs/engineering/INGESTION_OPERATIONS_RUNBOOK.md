@@ -127,7 +127,7 @@ and returns recent `ingestion_runs` plus the latest normalized evidence rows.
 ```bash
 aws lambda invoke \
   --function-name stockbrief-dev-api \
-  --payload '{"stockbrief_operation":"get_ingestion_status","tickers":["005930"],"limit":10}' \
+  --payload '{"stockbrief_operation":"get_ingestion_status","tickers":["005930"],"providers":["NAVER_NEWS"],"limit":10}' \
   --cli-binary-format raw-in-base64-out \
   /tmp/stockbrief-ingestion-status-response.json \
   --profile stockbrief-dev \
@@ -139,6 +139,8 @@ Expected result:
 - Response `ok` is `true`.
 - `summary.run_status_counts.succeeded` increases after successful provider
   runs.
+- `summary.ticker_filter` and `summary.provider_filter` match the requested
+  smoke scope.
 - `recent_runs[].provider`, `recent_runs[].status`, `recent_runs[].ticker`, and
   `recent_runs[].source_date` match the manual smoke input.
 - `latest_evidence[]` includes recent `evidence_id`, `ticker`, `source_name`,

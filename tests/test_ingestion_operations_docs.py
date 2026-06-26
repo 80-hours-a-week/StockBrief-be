@@ -28,7 +28,10 @@ def test_ingestion_operations_runbook_exists_and_covers_manual_smoke() -> None:
     assert '"provider":"NAVER_NEWS"' in runbook
     assert '"source_date":"YYYY-MM-DD"' in runbook
     assert '"stockbrief_operation":"get_ingestion_status"' in runbook
+    assert '"providers":["NAVER_NEWS"]' in runbook
     assert "summary.run_status_counts.succeeded" in runbook
+    assert "summary.ticker_filter" in runbook
+    assert "summary.provider_filter" in runbook
     assert "latest_evidence[]" in runbook
     assert '"stockbrief_operation":"reconcile_stale_ingestion_runs"' in runbook
     assert '"dry_run":true' in runbook
