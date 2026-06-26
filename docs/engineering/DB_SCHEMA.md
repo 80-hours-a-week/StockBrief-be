@@ -307,6 +307,33 @@ Stores external API request logs without secrets.
 Stores ingestion execution state so provider jobs can be retried or replayed
 without duplicate writes.
 
+Replay policy:
+
+- `run_id` is unique and protects explicit reruns of the same ledger row.
+- `input_hash` is the normalized provider, ticker, source date, and request
+  parameter hash. A succeeded run with the same `input_hash` is replayed even
+  when a later request uses a different explicit `run_id`.
+- An active run with the same `input_hash` blocks another run until the first
+  run reaches a terminal status.
+- A partial unique index on active or succeeded `input_hash` values prevents
+  concurrent first-run workers from creating multiple active ledger rows for the
+  same normalized input.
+
+Before applying migration `0004_ingestion_input_hash_guard`, confirm that the
+target database has no existing duplicate active/succeeded input hashes:
+
+```sql
+select input_hash, count(*) as duplicate_count
+from ingestion_runs
+where status in ('started', 'succeeded')
+group by input_hash
+having count(*) > 1;
+```
+
+If this query returns rows, resolve the duplicate ledger rows before running the
+migration. The migration intentionally fails with an explicit message instead
+of creating the index over ambiguous existing data.
+
 | Field | Type | Required | Example | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | uuid | yes | `...` | Primary key. |
@@ -333,6 +360,11 @@ Provider upsert keys:
 | Financial statement | `ticker + fiscal_year + fiscal_period + source_document_id` |
 | Source document | `source_type + source_name + external_id`, fallback `content_hash` |
 | Score | `ticker + as_of_date + score_version` |
+
+Provider ingestion stores raw payload archive references, when available, in
+`source_documents.metadata.raw_archive_uri` and each normalized row's
+`raw_payload.raw_archive_uri`. The S3 object is the immutable raw provider
+payload; RDS rows are the normalized query surface.
 
 ### chat_sessions
 
@@ -377,11 +409,14 @@ Stores user and assistant chat messages with safety metadata.
 - Unique `recommendation_reasons.reason_id`.
 - Unique `api_cache_entries.cache_key`.
 - Unique `ingestion_runs.run_id`.
+- Unique partial `ingestion_runs(input_hash)` for `started` and `succeeded`
+  rows.
 - Unique `chat_sessions.session_id`.
 - Unique `chat_messages.message_id`.
 - Index `recommendation_scores(as_of_date, is_candidate_eligible, total_score desc)`.
 - Index `evidence_chunks(ticker, evidence_type)`.
 - Index `risk_signals(ticker, as_of)`.
+- Index `chat_messages(session_id)` for authenticated chat session detail reads.
 - Index `ingestion_runs(job_type, provider, status)`.
 - Index `ingestion_runs(started_at)`.
 

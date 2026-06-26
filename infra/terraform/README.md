@@ -10,6 +10,7 @@ This directory prepares the MVP deployment direction for AWS. It is a skeleton, 
 - Secrets: AWS Secrets Manager.
 - Auth: AWS Cognito User Pool with email-based signup/login and API Gateway JWT authorizer.
 - Logs: CloudWatch log groups.
+- Ingestion: S3 raw provider archive, SQS DLQ, and optional EventBridge Scheduler.
 - Agent: optional Amazon Bedrock AgentCore Runtime CloudFormation stack, enabled after an ECR agent image exists.
 - IaC: Terraform modules with `dev`, `staging`, and `prod` variable examples.
 
@@ -31,6 +32,7 @@ infra/terraform
 │   ├── rds/
 │   └── secrets/
 ├── main.tf
+├── ingestion.tf
 ├── variables.tf
 ├── outputs.tf
 ├── providers.tf
@@ -45,7 +47,7 @@ For a new AWS account or environment, first run the one-time GitHub OIDC and
 Terraform state bootstrap documented in
 `docs/engineering/DEPLOYMENT_BOOTSTRAP.md`. The bootstrap creates the remote
 state bucket, lock table, GitHub Actions OIDC provider, deploy role, and GitHub
-repository variables required by `.github/workflows/backend-dev-deploy.yml`.
+Environment variables required by `.github/workflows/backend-dev-deploy.yml`.
 
 1. Package the backend Lambda zip:
 
@@ -53,7 +55,7 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    ./scripts/package_api_lambda.sh
    ```
 
-   The script defaults `PYTHON_BIN` to `python3.13` to match `requires-python = ">=3.13"` in `pyproject.toml` and the `python3.13` Lambda runtime. It packages third-party dependencies as Linux `manylinux2014_x86_64` wheels for the Lambda zip, then copies the backend `app/` package into the zip root. If your system resolves a different interpreter as `python3.13`, override the variable explicitly:
+   The script defaults `PYTHON_BIN` to `python3.13` to match `requires-python = ">=3.13"` in `pyproject.toml` and the `python3.13` Lambda runtime. It packages third-party dependencies as Linux `manylinux2014_x86_64` wheels for the Lambda zip, then copies the backend `app/` package into the zip root. The zip is deterministic and includes regular files only; directory entries and symlinks are excluded by policy so Lambda packages do not depend on filesystem link behavior. If your system resolves a different interpreter as `python3.13`, override the variable explicitly:
 
    ```bash
    PYTHON_BIN=/usr/local/bin/python3.13 ./scripts/package_api_lambda.sh
@@ -73,14 +75,35 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
    - `db_security_group_ids`
    - `lambda_subnet_ids`
    - `lambda_security_group_ids`
+   - `vpc_endpoint_route_table_ids`
+   - `enable_lambda_nat_egress`
+   - `lambda_nat_public_subnet_id`
+   - `lambda_nat_route_subnet_ids`
    - `cors_allowed_origins`
    - `cognito_callback_urls`
    - `cognito_logout_urls`
    - `cognito_hosted_ui_domain_prefix`
    - `amplify_cognito_redirect_uri`
+   - `enable_ingestion_scheduler`
+   - `ingestion_schedule_provider`
+   - `ingestion_schedule_tickers`
+   - `ingestion_schedule_jobs`
 
    For the first backend-only deployment, keep `enable_amplify = false`. Enable
    it only after the target GitHub organization approves the Amplify GitHub App.
+   Also keep `enable_ingestion_scheduler = false` until provider API credentials
+   are stored in Secrets Manager and the target ticker/job list is reviewed.
+   Keep `enable_lambda_nat_egress = false` until live provider ingestion is
+   approved because NAT Gateway creates hourly and data processing charges.
+   For PR #161, both NAT egress and EventBridge Scheduler stay intentionally
+   disabled for the low-cost dev account bootstrap. Track live ingestion
+   enablement, cost approval, and runbook smoke evidence through #163 before
+   changing either toggle.
+   The committed dev `deploy.auto.tfvars.json` follows this low-cost,
+   local-only bootstrap posture: Amplify is disabled and Cognito/CORS entries
+   include only localhost and loopback development origins. If a hosted dev FE
+   URL must be restored, track the callback, logout, and CORS change through
+   #162 before relying on that hosted login flow.
 
 4. If deploying Amplify through Terraform, install the AWS Amplify GitHub App for
    the target region/account and provide a GitHub personal access token through
@@ -115,6 +138,61 @@ repository variables required by `.github/workflows/backend-dev-deploy.yml`.
 
 7. After resources exist, update Secrets Manager values outside git and redeploy Lambda/Amplify as needed.
 
+## Security Group Rule Apply Review
+
+Managed dev networking keeps the Security Group resources stable and manages
+their ingress and egress entries through separate `aws_security_group_rule`
+resources. If a plan follows the older inline-rule state, Terraform can show
+rule deletes and creates in the same apply even though the Security Groups
+themselves stay in place.
+
+Expected plan shape during the inline-to-standalone rule transition:
+
+```text
+# aws_security_group.lambda[0] will be updated in-place
+~ resource "aws_security_group" "lambda" {
+    # inline egress block removed from state
+  }
+
+# aws_security_group_rule.lambda_https_egress[0] will be created
++ resource "aws_security_group_rule" "lambda_https_egress" {
+    type        = "egress"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+  }
+```
+
+The same pattern can appear for these managed rules:
+
+- `aws_security_group_rule.lambda_https_egress`
+- `aws_security_group_rule.lambda_database_egress`
+- `aws_security_group_rule.rds_proxy_from_lambda`
+- `aws_security_group_rule.rds_proxy_to_rds`
+- `aws_security_group_rule.rds_from_managed_database_client`
+- `aws_security_group_rule.secretsmanager_endpoint_from_lambda`
+
+Review the plan before applying:
+
+```bash
+terraform plan -var-file=envs/dev/deploy.auto.tfvars.json
+```
+
+The acceptable change is a rule-only replacement: the existing
+`aws_security_group.lambda[0]`, `aws_security_group.rds_proxy[0]`,
+`aws_security_group.rds[0]`, and
+`aws_security_group.secretsmanager_endpoint[0]` resources should remain
+in-place. Do not apply if Terraform plans to replace a Security Group, subnet,
+RDS instance, RDS Proxy, or VPC endpoint unless that larger replacement is
+intentional and reviewed separately.
+
+AWS does not guarantee that every Security Group rule replacement is ordered as
+create-before-delete. Apply this transition only when brief database or
+Secrets Manager connectivity loss is acceptable: a quiet dev period, or a
+defined maintenance window for staging and production. After apply, verify that
+the Lambda path can still reach RDS or RDS Proxy and Secrets Manager before
+enabling scheduled ingestion.
+
 ## Terraform Backend Operations
 
 Terraform backend settings are not normal variables. They are read during
@@ -135,8 +213,24 @@ Environment key convention:
 | Environment | State key |
 | --- | --- |
 | `dev` | `stockbrief/dev/terraform.tfstate` |
+| `dev-<member>` | `stockbrief/dev-<member>/terraform.tfstate` |
 | `staging` | `stockbrief/staging/terraform.tfstate` |
 | `prod` | `stockbrief/prod/terraform.tfstate` |
+
+Store account-specific backend files under `backends/`:
+
+```text
+backends/dev.hcl
+backends/dev-<member>.hcl
+```
+
+Use `backends/dev-template.hcl.example` and
+`envs/dev-template/deploy.auto.tfvars.json.example` when onboarding another
+team member's AWS account.
+Commit account-specific files only when the team explicitly accepts exposing
+non-secret AWS identifiers such as account ID, VPC ID, subnet ID, route table
+ID, Cognito domain prefix, and Amplify domain in the repository. Otherwise keep
+the real profile in an internal handoff location and leave only templates here.
 
 Use `terraform init -reconfigure` when selecting a different backend that already
 has the intended state or starts empty. Use `terraform init -migrate-state` only
@@ -144,14 +238,19 @@ when moving the same state to a new backend location. Before any apply after a
 backend change, run:
 
 ```bash
+terraform init -reconfigure -backend-config=backends/<target_env>.hcl
 terraform state list
-terraform plan -var-file=envs/dev/deploy.auto.tfvars.json
+terraform plan -var-file=envs/<target_env>/deploy.auto.tfvars.json
 ```
 
-For GitHub Actions, `backend-dev-deploy` initializes Terraform with the committed
-`backend.tf` and `envs/dev/deploy.auto.tfvars.json`. Any environment expansion
-must change backend config, tfvars, and workflow behavior together in one PR to
-avoid applying one environment's variables to another environment's state.
+For GitHub Actions, `backend-dev-deploy` resolves `target_env`, initializes
+Terraform with `backends/<target_env>.hcl`, and plans with
+`envs/<target_env>/deploy.auto.tfvars.json`. For account-specific profiles,
+prefer GitHub Environment variables `TF_BACKEND_CONFIG_HCL` and `TFVARS_JSON`;
+the workflow creates both files on the runner when they are not committed.
+After a dev backend/account transition PR merges, run `backend-dev-deploy` and
+record the success or expected guard failure on #52 before treating the deploy
+role hardening work as complete.
 
 ## Lambda Packaging
 
@@ -179,7 +278,7 @@ Output zip:
 dist/stockbrief-api-lambda.zip
 ```
 
-The script installs Lambda-compatible third-party dependencies into `dist/lambda-api`, copies the backend `app/` package into the zip root, removes Python cache directories, and zips the package. It does not include local `.env` files or secrets.
+The script installs Lambda-compatible third-party dependencies into `dist/lambda-api`, copies the backend `app/` package into the zip root, removes Python cache directories, normalizes timestamps, and zips regular files in sorted order with `zip -X`. It intentionally omits directory entries and symlinks. It does not include local `.env` files or secrets.
 
 ## Amplify Hosting
 
@@ -208,7 +307,17 @@ NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN
 NEXT_PUBLIC_COGNITO_REDIRECT_URI
 ```
 
-`NEXT_PUBLIC_API_BASE_URL` is populated from the API Gateway output in Terraform. For local development, keep using `.env.example`.
+`NEXT_PUBLIC_API_BASE_URL` is populated from the API Gateway output in
+Terraform. For local development against a deployed dev stack, regenerate
+`StockBrief-fe/.env.local` from the active backend outputs:
+
+```bash
+cd ../StockBrief-fe
+npm run sync:dev-env -- --terraform-dir ../StockBrief-be/infra/terraform
+```
+
+The generated `.env.local` contains only public frontend values and must remain
+outside git.
 
 For Terraform-created Amplify apps, AWS requires the Amplify GitHub App to be installed and a GitHub access token to be supplied during app creation. Pass it through `TF_VAR_amplify_access_token`; do not commit it. After the app exists, Terraform ignores `access_token` drift so GitHub Actions can update the app without storing a personal GitHub token as a repository secret.
 
@@ -221,6 +330,44 @@ Amplify Hosted UI callback setup is intentionally two-step:
    `cognito_callback_urls`, add the matching account URL to
    `cognito_logout_urls`, set `amplify_cognito_redirect_uri` to the hosted
    callback URL, and apply again.
+
+## Lambda Provider Egress
+
+Lambda functions attached to a VPC do not receive public IP addresses, even
+when their subnet route table has an Internet Gateway route. Real OpenDART and
+Naver ingestion therefore needs an explicit outbound path.
+
+Terraform can create a NAT Gateway path for the Lambda subnets only when all
+three values are supplied:
+
+```hcl
+enable_lambda_nat_egress    = true
+lambda_nat_public_subnet_id = "subnet-public-for-nat"
+lambda_nat_route_subnet_ids = ["subnet-lambda-a", "subnet-lambda-b"]
+```
+
+For live ingestion verification, set the values for the target AWS account:
+
+```hcl
+enable_lambda_nat_egress    = true
+lambda_nat_public_subnet_id = "subnet-public-for-nat"
+lambda_nat_route_subnet_ids = [
+  "subnet-lambda-private-a",
+  "subnet-lambda-private-b",
+]
+```
+
+The public NAT subnet must keep a route to the VPC Internet Gateway. The route
+subnet IDs are associated with a Terraform-managed private route table whose
+default route points to the NAT Gateway. For the current dev account, choose a
+public subnet that is not in `lambda_nat_route_subnet_ids` so the NAT Gateway
+itself keeps direct Internet Gateway egress. Do not include
+`lambda_nat_public_subnet_id` in `lambda_nat_route_subnet_ids`; Terraform
+preconditions fail the plan when those inputs overlap.
+
+Keep this disabled unless a live provider ingestion smoke test is scheduled.
+When enabled, NAT Gateway hourly and data processing costs continue until the
+toggle is set back to `false` and Terraform is applied.
 
 ## RDS And RDS Proxy
 
@@ -250,6 +397,122 @@ At runtime the backend uses `DATABASE_URL` directly when present in the secret.
 Otherwise, it builds a PostgreSQL URL from `DATABASE_HOST` plus the secret's
 `username` and `password`.
 
+## Provider Ingestion
+
+Before running a provider job or enabling the scheduler, call the readiness
+operation from the same Lambda maintenance handler:
+
+```json
+{
+  "stockbrief_operation": "check_ingestion_readiness"
+}
+```
+
+The readiness response reports whether `INGESTION_RAW_BUCKET`,
+`EXTERNAL_API_SECRET_ARN`, `OPENDART_API_KEY`, `NAVER_CLIENT_ID`, and
+`NAVER_CLIENT_SECRET` are configured. It reports presence only and does not
+return secret values. It also does not call external provider APIs, so outbound
+internet egress must still be verified separately before scheduled ingestion is
+enabled.
+
+After readiness passes, verify outbound provider egress from the Lambda runtime:
+
+```json
+{
+  "stockbrief_operation": "check_provider_egress",
+  "providers": ["OpenDART", "NAVER_NEWS"]
+}
+```
+
+This operation sends unauthenticated HTTPS checks to the provider endpoints.
+HTTP responses such as `401`, `403`, or provider validation errors still prove
+network reachability; DNS, connection, and timeout failures keep
+`outbound_internet_egress_verified` effectively false for scheduler enable
+purposes. It does not send API keys or client secrets.
+
+The backend Lambda can run provider ingestion through the same handler used for
+maintenance events:
+
+```json
+{
+  "stockbrief_operation": "ingest_provider_batch",
+  "provider": "OpenDART",
+  "tickers": ["005930"],
+  "source_date": "2026-06-18"
+}
+```
+
+Supported providers are `OpenDART` and `NAVER_NEWS`. Each ticker run writes an
+`ingestion_runs` row before provider access, computes a stable request hash, and
+skips duplicate successful runs as `replayed`. The replay check uses the
+normalized `input_hash`, so the same provider/ticker/source date/request
+parameter set is replayed even if a later manual request uses a different
+explicit `run_id`. A partial unique index on active or succeeded `input_hash`
+values prevents concurrent first-run workers from creating multiple active
+ledger rows for the same normalized input. Available provider responses are
+stored in RDS using these first baseline upsert keys:
+
+- OpenDART disclosures: `provider + receipt_no`
+- NAVER news: `source_url`, with the source document keyed by `source_name + source_url_hash`
+- Source documents: `source_name + external_id`, fallback `content_hash`
+
+Manual and scheduled ingestion requests are rejected before provider calls when
+they exceed these dev operational limits:
+
+- `tickers`: max 20 per batch
+- `page_count`: max 100
+- `news_display`: max 50
+
+Terraform creates these ingestion resources:
+
+- S3 raw archive bucket when `enable_ingestion_raw_archive = true`
+- Customer-managed KMS key for S3 raw archive SSE-KMS encryption
+- S3 Gateway VPC Endpoint for the Lambda subnet route tables when managed
+  networking and raw archive are enabled
+- SQS DLQ with SQS-managed server-side encryption for failed scheduled invocations
+- EventBridge Scheduler only when `enable_ingestion_scheduler = true` and
+  `ingestion_schedule_tickers` is non-empty
+
+The Lambda receives `INGESTION_RAW_BUCKET` and `EXTERNAL_API_SECRET_ARN`.
+External API secret values must be stored under:
+
+- `OPENDART_API_KEY`
+- `NAVER_CLIENT_ID`
+- `NAVER_CLIENT_SECRET`
+
+Keep the scheduler disabled for the first dev apply. Manually invoke
+`ingest_provider_batch` first, confirm `ingestion_runs`, normalized rows, S3 raw
+objects, and DLQ behavior, then enable the scheduler in a separate reviewed PR.
+If Lambda runs in private subnets, S3 raw archive requires the S3 Gateway VPC
+Endpoint. Real external provider calls still require an outbound internet path
+such as NAT or another approved egress design before enabling scheduled jobs.
+
+### Scheduler Enable Gate
+
+Do not set `enable_ingestion_scheduler = true` until all of these checks are
+complete and recorded in the PR body:
+
+- `OPENDART_API_KEY`, `NAVER_CLIENT_ID`, and `NAVER_CLIENT_SECRET` are populated
+  in Secrets Manager outside git.
+- A manual `ingest_provider_batch` run succeeds for the target provider and
+  ticker list without `missing_api_key` fallback.
+- Lambda outbound internet egress to the selected provider is verified with
+  `check_provider_egress` from the deployed Lambda environment. S3 Gateway VPC
+  Endpoint only covers raw archive writes to S3; it does not provide internet
+  egress for OpenDART or Naver.
+  If VPC Lambda egress is required, enable `enable_lambda_nat_egress` only for
+  the smoke window and turn it off after the evidence is collected.
+- S3 raw archive objects are written for the manual run and the SQS DLQ remains
+  empty after the smoke test.
+- The schedule expression, provider job list, and ticker list are reviewed for
+  cost, rate-limit, and data freshness expectations. Use
+  `ingestion_schedule_jobs` for more than one provider; the legacy
+  `ingestion_schedule_provider` and `ingestion_schedule_tickers` variables are
+  used only when `ingestion_schedule_jobs` is empty.
+
+If any check fails, keep the scheduler disabled and run ingestion manually until
+the missing credential, network egress, or provider behavior is fixed.
+
 ## AgentCore Runtime
 
 AgentCore Runtime is disabled by default because it requires a built agent container image in ECR.
@@ -274,6 +537,40 @@ agentcore validate
 agentcore deploy --dry-run
 agentcore deploy --diff
 ```
+
+## Direct Bedrock Chat Provider
+
+The backend defaults to `chat_provider = "mock"` so local/dev smoke tests do not
+call external AI services. To validate the direct Bedrock provider, set:
+
+```hcl
+chat_provider         = "bedrock"
+bedrock_chat_model_id = "apac.amazon.nova-micro-v1:0"
+bedrock_chat_region   = "" # empty uses aws_region
+```
+
+When `chat_provider = "bedrock"`, the API Lambda role receives
+`bedrock:InvokeModel` only for the configured foundation model ARN or inference
+profile ARN. Use an `apac.*` or `global.*` inference profile ID when the selected
+model does not support on-demand invocation in the target region.
+
+For inference profile IDs, the Lambda policy is split into two statements:
+
+- the configured inference profile ARN can be invoked directly;
+- the associated foundation model ARNs can be invoked only when the request
+  context includes the configured `bedrock:InferenceProfileArn`.
+
+The default `apac.amazon.nova-micro-v1:0` profile currently routes to
+`ap-southeast-2`, `ap-northeast-1`, `ap-south-1`, `ap-northeast-2`,
+`ap-southeast-1`, and `ap-northeast-3`. If you change
+`bedrock_chat_model_id` to another inference profile, update
+`bedrock_chat_inference_profile_foundation_model_regions` from
+`aws bedrock get-inference-profile` before applying. Global profiles can require
+different foundation model ARN patterns; add those entries through
+`bedrock_chat_inference_profile_extra_foundation_model_arns` after verifying the
+AWS profile routing list and IAM examples. Keep the provider on `mock` unless
+Bedrock model access, expected request volume, and cost are approved for the
+day's validation.
 
 ## Secrets Manager
 
@@ -302,6 +599,9 @@ Non-secret runtime values remain Lambda or Amplify environment variables:
 - `API_BASE_PATH`
 - `DATABASE_SECRET_ARN`
 - `CORS_ALLOWED_ORIGINS`
+- `CHAT_PROVIDER`
+- `BEDROCK_CHAT_MODEL_ID`
+- `BEDROCK_CHAT_REGION`
 - `NEXT_PUBLIC_API_BASE_URL`
 - `NEXT_PUBLIC_APP_NAME`
 - `COGNITO_USER_POOL_ID`
@@ -313,6 +613,89 @@ Non-secret runtime values remain Lambda or Amplify environment variables:
 - `NEXT_PUBLIC_COGNITO_APP_CLIENT_ID`
 - `NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN`
 - `NEXT_PUBLIC_COGNITO_REDIRECT_URI`
+
+### External API Credential Update Runbook
+
+Use this runbook after Terraform creates `stockbrief-dev/external-api` and
+before running live OpenDART or NAVER ingestion. Never commit real API keys,
+tokens, or copied secret payloads.
+
+1. Resolve the Terraform-managed external API secret ARN:
+
+   ```bash
+   cd infra/terraform
+   terraform output -raw external_api_secret_arn
+   ```
+
+2. Do not paste provider credential values into shared logs, shell history, PR
+   comments, or issue comments. Use the script prompt mode when entering real
+   values manually.
+
+3. Validate the payload locally without calling AWS:
+
+   ```bash
+   scripts/update_external_api_secret.sh --prompt --dry-run
+   ```
+
+4. Update the current Secrets Manager value without printing the payload:
+
+   ```bash
+   scripts/update_external_api_secret.sh --prompt
+   ```
+
+   The script resolves `external_api_secret_arn` from Terraform output by
+   default, writes a temporary JSON payload outside git, passes it to
+   `aws secretsmanager update-secret` with `file://`, and deletes the temporary
+   payload automatically. The script applies the selected profile and region to
+   Terraform state lookup through `AWS_PROFILE`, `AWS_REGION`, and
+   `AWS_DEFAULT_REGION`, and passes `--profile`/`--region` to AWS Secrets
+   Manager calls. Use `--secret-id` to skip Terraform state lookup entirely when
+   needed.
+
+5. Verify metadata only. Do not use `get-secret-value` in shared logs or PR
+   evidence because it prints secret material. The script prints this metadata
+   after a successful update; to re-check it manually:
+
+   ```bash
+   aws secretsmanager describe-secret \
+     --secret-id "$(terraform output -raw external_api_secret_arn)" \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+   ```
+
+6. If you used environment variables instead of `--prompt`, remove the provider
+   credentials from the shell session:
+
+   ```bash
+   unset OPENDART_API_KEY NAVER_CLIENT_ID NAVER_CLIENT_SECRET KRX_DATA_PATH
+   ```
+
+7. Run one manual Lambda ingestion per provider before enabling any scheduler.
+   Replace `YYYY-MM-DD` with the business date you want to verify:
+
+   ```bash
+   aws lambda invoke \
+     --function-name stockbrief-dev-api \
+     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"OpenDART","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
+     --cli-binary-format raw-in-base64-out \
+     /tmp/stockbrief-opendart-ingest-response.json \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+
+   aws lambda invoke \
+     --function-name stockbrief-dev-api \
+     --payload '{"stockbrief_operation":"ingest_provider_batch","provider":"NAVER_NEWS","tickers":["005930"],"source_date":"YYYY-MM-DD"}' \
+     --cli-binary-format raw-in-base64-out \
+     /tmp/stockbrief-naver-ingest-response.json \
+     --profile stockbrief-dev \
+     --region ap-northeast-2
+   ```
+
+8. Treat credentials as present only after the Lambda responses no longer report
+   `missing_api_key` for `OPENDART_API_KEY` or
+   `NAVER_CLIENT_ID/NAVER_CLIENT_SECRET`. Credential presence is necessary but
+   not sufficient for live ingestion; the Lambda private subnet must also have
+   outbound internet egress to reach OpenDART and NAVER.
 
 ## Cognito And API Gateway JWT Authorizer
 
@@ -377,29 +760,52 @@ is `true`:
 | API Gateway HTTP API | p99 latency > 5 seconds for 2 of 3 minutes |
 | RDS PostgreSQL | CPU utilization > 80% for 2 of 3 minutes |
 | RDS PostgreSQL | Free storage below 2 GiB for 2 of 3 minutes |
+| RDS Proxy | Database connection borrow latency > 1 second for 2 of 3 minutes |
+| RDS Proxy | Any database connection setup failure |
+| RDS Proxy | Any client authentication setup failure |
 
 Set `operational_alarm_email_addresses` to subscribe email recipients through
 SNS. Email subscriptions require each recipient to confirm the AWS SNS
 subscription email before notifications are delivered. Leave the list empty to
 create alarms without notification actions.
 
+RDS Proxy alarms are created only when `enable_rds_proxy = true` and RDS subnets
+are configured. The proxy alarms use the CloudWatch `AWS/RDS` namespace with the
+`ProxyName` dimension. Some RDS Proxy metrics are not visible until after the
+first successful proxy connection, so verify metric ingestion after a deployed
+Lambda request actually connects through the proxy.
+
+Operational alarm rollout checklist:
+
+- Confirm every SNS email subscription is in `Confirmed` status before relying
+  on notifications.
+- Prefer a team or operations group alias over a personal email address for
+  `operational_alarm_email_addresses`.
+- Remember that email endpoints appear in Terraform plan and state metadata.
+- After each dev/staging/prod apply, verify that API Gateway, Lambda, RDS, and
+  RDS Proxy alarms show recent metric datapoints in CloudWatch.
+- Record whether the default thresholds need tuning for the environment's real
+  traffic profile before enabling the same values in production.
+
 ## GitHub Actions Dev Deployment
 
 The dev backend deployment uses GitHub Actions OIDC instead of long-lived AWS
 access keys. The `backend-dev-deploy` workflow runs on pushes to `main` and on
-manual dispatch. The deploy job is attached to the GitHub Environment named
-`dev`.
+manual dispatch. Pushes to `main` deploy `target_env=dev`; manual dispatch can
+choose another dev profile such as `dev-junwoo`. This workflow rejects
+non-dev profiles; staging and production must use separate workflows and
+approval policies.
 
-Because the job uses `environment: dev`, the IAM OIDC trust policy expects the
-GitHub token subject to be:
+Because the job uses `environment: <target_env>`, the IAM OIDC trust policy
+expects the GitHub token subject to be:
 
 ```text
-repo:80-hours-a-week/StockBrief-be:environment:dev
+repo:80-hours-a-week/StockBrief-be:environment:<target_env>
 ```
 
-The `dev` GitHub Environment uses a custom deployment branch policy that allows
-only the `main` branch. Keep that branch policy aligned with the IAM trust
-policy whenever the workflow branch or environment name changes.
+Each GitHub Environment uses a custom deployment branch policy that allows only
+the `main` branch. Keep that branch policy aligned with the IAM trust policy
+whenever the workflow branch or environment name changes.
 
 Bootstrap resources are generated per AWS account:
 
@@ -408,24 +814,37 @@ Bootstrap resources are generated per AWS account:
 | Terraform state bucket | `stockbrief-terraform-state-<account-id>-ap-northeast-2` |
 | Terraform lock table | `stockbrief-terraform-locks` |
 | GitHub OIDC provider | `token.actions.githubusercontent.com` |
-| GitHub deploy role | `stockbrief-dev-github-actions-deploy` |
+| GitHub deploy role | `stockbrief-<target_env>-github-actions-deploy` |
 
-Required GitHub repository variables:
+Required GitHub Environment variables:
 
 | Variable | Value |
 | --- | --- |
-| `AWS_DEV_DEPLOY_ROLE_ARN` | Deploy role ARN printed by the bootstrap script |
+| `AWS_<TARGET_ENV>_DEPLOY_ROLE_ARN` | Deploy role ARN printed by the bootstrap script |
 | `OPERATIONAL_ALARM_EMAILS_JSON` | JSON list of alarm recipient emails |
+| `TF_BACKEND_CONFIG_HCL` | Terraform backend HCL for the selected GitHub Environment |
+| `TFVARS_JSON` | Terraform variable JSON for the selected GitHub Environment |
+
+For rotating team AWS accounts, keep these values in the matching GitHub
+Environment, for example `Settings > Environments > dev-junwoo > Environment
+variables`. Do not put account-specific deploy role ARNs, backend config, or
+tfvars in repository-level variables; global variables make it too easy to run
+one team member's `target_env` against another team member's AWS account.
+
+When building `TFVARS_JSON`, keep `amplify_cognito_redirect_uri` empty for the
+console-managed Amplify flow unless Terraform creates Amplify for that
+environment. Keep `agentcore_runtime_container_uri` empty unless
+`agentcore_runtime_enabled` is true and an AgentCore ECR image URI is ready.
 
 The workflow builds `dist/stockbrief-api-lambda.zip`, initializes Terraform with
-the S3 backend, plans with `envs/dev/deploy.auto.tfvars.json`, and applies the
-plan to dev.
+the selected S3 backend config, plans with the selected tfvars file, and applies
+the plan to the chosen profile.
 
-`AWS_DEV_DEPLOY_ROLE_ARN` and `OPERATIONAL_ALARM_EMAILS_JSON` can remain
-repository variables for the single dev environment. If staging or prod is added,
-move each environment's values into the matching GitHub Environment variables.
-Enable required reviewers on the `dev` environment only if the team wants manual
-approval before every dev apply.
+`AWS_DEV_DEPLOY_ROLE_ARN` remains supported for the default `dev` profile only.
+For rotating team accounts, use explicit Environment variables such as
+`AWS_DEV_JUNWOO_DEPLOY_ROLE_ARN` inside the matching GitHub Environment. Enable
+required reviewers on dev environments only if the team wants manual approval
+before every apply.
 
 ## Current Limitations
 

@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -398,7 +399,10 @@ class ChatSession(Base):
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
-    __table_args__ = (UniqueConstraint("message_id", name="uq_chat_messages_message_id"),)
+    __table_args__ = (
+        UniqueConstraint("message_id", name="uq_chat_messages_message_id"),
+        Index("ix_chat_messages_session_id", "session_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid_pk)
     message_id: Mapped[str] = mapped_column(Text, nullable=False)
@@ -429,6 +433,13 @@ class IngestionRun(Base):
     __tablename__ = "ingestion_runs"
     __table_args__ = (
         UniqueConstraint("run_id", name="uq_ingestion_runs_run_id"),
+        Index(
+            "uq_ingestion_runs_active_input_hash",
+            "input_hash",
+            unique=True,
+            postgresql_where=text("status IN ('started', 'succeeded')"),
+            sqlite_where=text("status IN ('started', 'succeeded')"),
+        ),
         Index("ix_ingestion_runs_job_type_provider_status", "job_type", "provider", "status"),
         Index("ix_ingestion_runs_started_at", "started_at"),
     )

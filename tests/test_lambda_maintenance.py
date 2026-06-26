@@ -22,3 +22,115 @@ def test_maintenance_rejects_unknown_operation() -> None:
 
     assert result["ok"] is False
     assert result["error"] == "unsupported_operation"
+    assert "check_ingestion_readiness" in result["supported_operations"]
+    assert "check_raw_archive_write" in result["supported_operations"]
+    assert "check_provider_egress" in result["supported_operations"]
+    assert "ingest_provider_batch" in result["supported_operations"]
+    assert "get_ingestion_status" in result["supported_operations"]
+    assert "reconcile_stale_ingestion_runs" in result["supported_operations"]
+
+
+def test_maintenance_routes_ingestion_readiness_operation(monkeypatch) -> None:
+    def fake_check():
+        return {"ok": False, "issues": [{"code": "missing_provider_credential"}]}
+
+    monkeypatch.setattr("app.maintenance.check_ingestion_readiness", fake_check)
+
+    result = handle_maintenance_event({"stockbrief_operation": "check_ingestion_readiness"})
+
+    assert result == {"ok": False, "issues": [{"code": "missing_provider_credential"}]}
+
+
+def test_maintenance_routes_raw_archive_write_operation(monkeypatch) -> None:
+    def fake_check():
+        return {"ok": True, "checks": {"raw_archive": {"write_verified": True}}}
+
+    monkeypatch.setattr("app.maintenance.check_raw_archive_write", fake_check)
+
+    result = handle_maintenance_event({"stockbrief_operation": "check_raw_archive_write"})
+
+    assert result == {"ok": True, "checks": {"raw_archive": {"write_verified": True}}}
+
+
+def test_maintenance_routes_provider_egress_operation(monkeypatch) -> None:
+    calls = []
+
+    def fake_check(event):
+        calls.append(event)
+        return {"ok": True, "checks": {"providers": {}}}
+
+    monkeypatch.setattr("app.maintenance.check_provider_egress", fake_check)
+
+    event = {"stockbrief_operation": "check_provider_egress", "provider": "OpenDART"}
+    result = handle_maintenance_event(event)
+
+    assert result == {"ok": True, "checks": {"providers": {}}}
+    assert calls == [event]
+
+
+def test_maintenance_routes_ingestion_operation(monkeypatch) -> None:
+    calls = []
+
+    def fake_handle(event):
+        calls.append(event)
+        return {"ok": True, "provider": "OpenDART"}
+
+    monkeypatch.setattr("app.maintenance.handle_ingestion_event", fake_handle)
+
+    result = handle_maintenance_event(
+        {
+            "stockbrief_operation": "ingest_provider_batch",
+            "provider": "OpenDART",
+            "tickers": ["005930"],
+        }
+    )
+
+    assert result == {"ok": True, "provider": "OpenDART"}
+    assert calls == [
+        {
+            "stockbrief_operation": "ingest_provider_batch",
+            "provider": "OpenDART",
+            "tickers": ["005930"],
+        }
+    ]
+
+
+def test_maintenance_routes_ingestion_status_operation(monkeypatch) -> None:
+    calls = []
+
+    def fake_status(event):
+        calls.append(event)
+        return {"ok": True, "summary": {"recent_run_count": 1}}
+
+    monkeypatch.setattr("app.maintenance.get_ingestion_status", fake_status)
+
+    event = {
+        "stockbrief_operation": "get_ingestion_status",
+        "tickers": ["005930"],
+        "limit": 5,
+    }
+    result = handle_maintenance_event(event)
+
+    assert result == {"ok": True, "summary": {"recent_run_count": 1}}
+    assert calls == [event]
+
+
+def test_maintenance_routes_stale_ingestion_reconcile_operation(monkeypatch) -> None:
+    calls = []
+
+    def fake_reconcile(event):
+        calls.append(event)
+        return {"ok": True, "dry_run": True, "stale_count": 1}
+
+    monkeypatch.setattr("app.maintenance.reconcile_stale_ingestion_runs", fake_reconcile)
+
+    event = {
+        "stockbrief_operation": "reconcile_stale_ingestion_runs",
+        "tickers": ["005930"],
+        "max_age_minutes": 60,
+        "dry_run": True,
+    }
+    result = handle_maintenance_event(event)
+
+    assert result == {"ok": True, "dry_run": True, "stale_count": 1}
+    assert calls == [event]

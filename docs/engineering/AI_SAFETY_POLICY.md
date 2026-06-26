@@ -146,6 +146,28 @@ Cite evidence IDs or source URLs when making factual claims.
 Use neutral Korean language.
 ```
 
+Provider configuration:
+
+- `CHAT_PROVIDER=mock` is the default local and dev-safe provider. It uses the
+  deterministic composer and does not call external AI services.
+- `CHAT_PROVIDER=bedrock` enables the direct Bedrock Runtime provider. It must
+  use an approved `BEDROCK_CHAT_MODEL_ID`, preserve deterministic citations and
+  policy status from the local composer, and fail closed with
+  `CHAT_PROVIDER_UNAVAILABLE` if Bedrock is unavailable, returns an empty answer,
+  or emits prohibited financial wording.
+- Bedrock prompt context must include only the evidence IDs that the local
+  composer selected as allowed citations. Evidence returned by the API but not
+  selected for citation should stay out of the model prompt so the citation guard
+  and model context use the same grounding boundary.
+- Do not silently fall back from Bedrock to mock in production-like validation.
+  A Bedrock provider failure should be visible as an upstream provider error so
+  operators can distinguish model/runtime issues from deterministic mock output.
+- Bedrock fail-closed logs must distinguish runtime request failures, empty
+  answers, unsafe output, and citation guard failures. Unsafe output logs must
+  not include the raw model answer; use answer length, a short SHA-256 prefix,
+  matched guard terms, and the `likely_false_positive` flag for operations
+  triage.
+
 ## 8. Safety Validation Checklist
 
 - Does the answer cite evidence IDs or source URLs when making factual claims?

@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_optional_current_user
+from app.config import Settings, get_settings
 from app.db import get_db_session
 from app.models import (
     ChatCitationContract,
@@ -18,7 +19,7 @@ from app.models import (
 from app.orm import ChatMessage, ChatSession, User
 from app.routes.common import COMMON_ERROR_RESPONSES, request_id
 from app.services.candidate_service import CandidateService
-from app.services.chat import compose_chat_answer
+from app.services.chat import ChatProviderInput, ChatProviderUnavailable, chat_provider_for
 from app.services.evidence_service import EvidenceService, contract_source_type
 
 router = APIRouter()
@@ -34,26 +35,42 @@ def chat(
     request: ChatRequest,
     session: Session = Depends(get_db_session),
     current_user: User | None = Depends(get_optional_current_user),
+    settings: Settings = Depends(get_settings),
 ) -> ChatContractResponse:
     candidate_service = CandidateService(session)
     stock, score = candidate_service.candidate_row(request.ticker)
     candidate = candidate_service.candidate_response(stock, score)
     evidence = EvidenceService(session).items(request.ticker)
-    response = compose_chat_answer(
-        message=request.message,
-        candidate=candidate,
-        evidence=evidence,
-    )
-    if current_user is not None:
+    current_user_id = current_user.id if current_user is not None else None
+    session.close()
+
+    try:
+        provider = chat_provider_for(settings.chat_provider, settings=settings)
+        response = provider.compose(
+            ChatProviderInput(
+                message=request.message,
+                candidate=candidate,
+                evidence=evidence,
+            )
+        )
+    except ChatProviderUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "CHAT_PROVIDER_UNAVAILABLE",
+                "message": str(exc),
+            },
+        ) from exc
+    if current_user_id is not None:
         response = _persist_chat_exchange(
             session=session,
-            user=current_user,
+            user_id=current_user_id,
             request=request,
             response=response,
         )
     return ChatContractResponse(
         data=_chat_contract_data(request=request, response=response),
-        message="mock Agent 응답을 반환했습니다.",
+        message=f"{provider.name} Agent 응답을 반환했습니다.",
         request_id=request_id(http_request),
     )
 
@@ -72,7 +89,7 @@ def _chat_contract_data(
                 source_type=contract_source_type(citation.type),
                 title=citation.title,
                 url=citation.source_url,
-                published_at=None,
+                published_at=citation.published_at,
             )
             for citation in response.citations
         ],
@@ -94,7 +111,7 @@ def _policy_action(policy_status: str) -> str:
 def _persist_chat_exchange(
     *,
     session: Session,
-    user: User,
+    user_id: uuid.UUID,
     request: ChatRequest,
     response: ChatResponse,
 ) -> ChatResponse:
@@ -102,13 +119,13 @@ def _persist_chat_exchange(
     chat_session = session.scalars(
         select(ChatSession).where(
             ChatSession.session_id == session_id,
-            ChatSession.user_id == user.id,
+            ChatSession.user_id == user_id,
         )
     ).first()
     if chat_session is None:
         chat_session = ChatSession(
             session_id=session_id,
-            user_id=user.id,
+            user_id=user_id,
             title=request.title,
             ticker=request.ticker,
         )

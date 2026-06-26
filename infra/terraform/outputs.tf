@@ -35,6 +35,31 @@ output "external_api_secret_arn" {
   sensitive   = true
 }
 
+output "ingestion_raw_bucket_name" {
+  description = "S3 bucket used for raw provider ingestion payload archives."
+  value       = try(aws_s3_bucket.ingestion_raw[0].bucket, "")
+}
+
+output "ingestion_raw_kms_key_arn" {
+  description = "KMS key ARN used for S3 raw provider ingestion payload archives."
+  value       = try(aws_kms_key.ingestion_raw[0].arn, "")
+}
+
+output "ingestion_dlq_url" {
+  description = "SQS DLQ URL for failed scheduled ingestion invocations."
+  value       = aws_sqs_queue.ingestion_dlq.url
+}
+
+output "ingestion_scheduler_name" {
+  description = "Comma-separated EventBridge Scheduler names for provider ingestion when enabled."
+  value       = length(aws_scheduler_schedule.provider_ingestion) > 0 ? join(",", [for schedule in values(aws_scheduler_schedule.provider_ingestion) : schedule.name]) : ""
+}
+
+output "ingestion_scheduler_names" {
+  description = "EventBridge Scheduler names for provider ingestion when enabled."
+  value       = [for schedule in values(aws_scheduler_schedule.provider_ingestion) : schedule.name]
+}
+
 output "cognito_user_pool_id" {
   description = "Cognito User Pool id for email-based P1 auth."
   value       = module.cognito.user_pool_id

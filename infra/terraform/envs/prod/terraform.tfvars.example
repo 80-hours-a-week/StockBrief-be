@@ -3,6 +3,18 @@ aws_region  = "ap-northeast-2"
 
 api_lambda_package_path = "../../dist/stockbrief-api-lambda.zip"
 cors_allowed_origins    = "https://stockbrief.example.com"
+chat_provider           = "mock"
+bedrock_chat_model_id   = "apac.amazon.nova-micro-v1:0"
+bedrock_chat_region     = ""
+bedrock_chat_inference_profile_foundation_model_regions = [
+  "ap-southeast-2",
+  "ap-northeast-1",
+  "ap-south-1",
+  "ap-northeast-2",
+  "ap-southeast-1",
+  "ap-northeast-3",
+]
+bedrock_chat_inference_profile_extra_foundation_model_arns = []
 
 enable_amplify         = false
 amplify_repository_url = "https://github.com/example/StockBrief-fe"
@@ -22,10 +34,13 @@ db_skip_final_snapshot     = false
 db_backup_retention_period = 7
 enable_rds_proxy           = true
 
-db_subnet_ids             = []
-db_security_group_ids     = []
-lambda_subnet_ids         = []
-lambda_security_group_ids = []
+db_subnet_ids               = []
+db_security_group_ids       = []
+lambda_subnet_ids           = []
+lambda_security_group_ids   = []
+enable_lambda_nat_egress    = false
+lambda_nat_public_subnet_id  = ""
+lambda_nat_route_subnet_ids = []
 
 enable_operational_alarms       = true
 operational_alarm_email_addresses = []
@@ -33,3 +48,11 @@ operational_alarm_email_addresses = []
 agentcore_runtime_enabled       = false
 agentcore_runtime_container_uri = ""
 agentcore_network_mode          = "PUBLIC"
+
+enable_ingestion_raw_archive        = true
+ingestion_raw_retention_days        = 180
+enable_ingestion_scheduler          = false
+ingestion_schedule_expression       = "cron(0 18 ? * MON-FRI *)"
+ingestion_schedule_provider         = "OpenDART"
+ingestion_schedule_tickers          = []
+ingestion_dlq_message_retention_seconds = 1209600

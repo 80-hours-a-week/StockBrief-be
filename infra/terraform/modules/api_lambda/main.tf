@@ -57,6 +57,75 @@ resource "aws_iam_role_policy" "agentcore_invoke" {
   policy = data.aws_iam_policy_document.agentcore_invoke[0].json
 }
 
+data "aws_iam_policy_document" "bedrock_chat_invoke" {
+  count = length(var.bedrock_chat_foundation_model_arns) == 0 && var.bedrock_chat_inference_profile_arn == "" ? 0 : 1
+
+  dynamic "statement" {
+    for_each = var.bedrock_chat_inference_profile_arn == "" ? [] : [var.bedrock_chat_inference_profile_arn]
+
+    content {
+      sid       = "InvokeConfiguredInferenceProfile"
+      actions   = ["bedrock:InvokeModel"]
+      resources = [statement.value]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = length(var.bedrock_chat_foundation_model_arns) == 0 ? [] : [var.bedrock_chat_foundation_model_arns]
+
+    content {
+      sid       = "InvokeConfiguredFoundationModels"
+      actions   = ["bedrock:InvokeModel"]
+      resources = statement.value
+
+      dynamic "condition" {
+        for_each = var.bedrock_chat_inference_profile_arn == "" ? [] : [var.bedrock_chat_inference_profile_arn]
+
+        content {
+          test     = "StringEquals"
+          variable = "bedrock:InferenceProfileArn"
+          values   = [condition.value]
+        }
+      }
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "bedrock_chat_invoke" {
+  count = length(var.bedrock_chat_foundation_model_arns) == 0 && var.bedrock_chat_inference_profile_arn == "" ? 0 : 1
+
+  name   = "${var.name_prefix}-api-bedrock-chat-invoke"
+  role   = aws_iam_role.api_lambda.id
+  policy = data.aws_iam_policy_document.bedrock_chat_invoke[0].json
+}
+
+data "aws_iam_policy_document" "ingestion_raw_archive" {
+  count = var.ingestion_raw_bucket_name == "" ? 0 : 1
+
+  statement {
+    actions = [
+      "s3:PutObject",
+      "s3:AbortMultipartUpload",
+    ]
+    resources = ["${var.ingestion_raw_bucket_arn}/raw/*"]
+  }
+
+  statement {
+    actions = [
+      "kms:GenerateDataKey",
+    ]
+    resources = [var.ingestion_raw_kms_key_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "ingestion_raw_archive" {
+  count = var.ingestion_raw_bucket_name == "" ? 0 : 1
+
+  name   = "${var.name_prefix}-api-ingestion-raw-archive"
+  role   = aws_iam_role.api_lambda.id
+  policy = data.aws_iam_policy_document.ingestion_raw_archive[0].json
+}
+
 resource "aws_lambda_function" "api" {
   function_name    = "${var.name_prefix}-api"
   role             = aws_iam_role.api_lambda.arn
@@ -76,6 +145,7 @@ resource "aws_lambda_function" "api" {
         DATABASE_PORT           = tostring(var.database_port)
         DATABASE_NAME           = var.database_name
         EXTERNAL_API_SECRET_ARN = var.external_api_secret_arn
+        INGESTION_RAW_BUCKET    = var.ingestion_raw_bucket_name
       }
     )
   }

@@ -5,13 +5,13 @@ variable "project" {
 }
 
 variable "environment" {
-  description = "Deployment environment. MVP prioritizes dev."
+  description = "Deployment environment. Use dev, dev-<member>, staging, or prod."
   type        = string
   default     = "dev"
 
   validation {
-    condition     = contains(["dev", "staging", "prod"], var.environment)
-    error_message = "environment must be one of dev, staging, or prod."
+    condition     = contains(["dev", "staging", "prod"], var.environment) || can(regex("^dev-[a-z0-9][a-z0-9-]*$", var.environment))
+    error_message = "environment must be dev, dev-<member>, staging, or prod."
   }
 }
 
@@ -49,6 +49,48 @@ variable "cors_allowed_origins" {
   description = "Comma-separated CORS origins passed to the backend."
   type        = string
   default     = "http://localhost:3000,http://127.0.0.1:3000"
+}
+
+variable "chat_provider" {
+  description = "Chat explanation provider. Keep mock unless Bedrock invocation is explicitly approved."
+  type        = string
+  default     = "mock"
+
+  validation {
+    condition     = contains(["mock", "bedrock"], var.chat_provider)
+    error_message = "chat_provider must be either mock or bedrock."
+  }
+}
+
+variable "bedrock_chat_model_id" {
+  description = "Foundation model ID or inference profile ID used by the direct Bedrock chat provider when chat_provider is bedrock."
+  type        = string
+  default     = "apac.amazon.nova-micro-v1:0"
+}
+
+variable "bedrock_chat_region" {
+  description = "Optional Bedrock Runtime region override. Leave empty to use aws_region."
+  type        = string
+  default     = ""
+}
+
+variable "bedrock_chat_inference_profile_foundation_model_regions" {
+  description = "Foundation model Regions associated with the configured Bedrock inference profile. Keep this in sync with the AWS Bedrock profile routing list."
+  type        = list(string)
+  default = [
+    "ap-southeast-2",
+    "ap-northeast-1",
+    "ap-south-1",
+    "ap-northeast-2",
+    "ap-southeast-1",
+    "ap-northeast-3",
+  ]
+}
+
+variable "bedrock_chat_inference_profile_extra_foundation_model_arns" {
+  description = "Additional foundation model ARNs required by the configured Bedrock inference profile, such as global profile ARN patterns that cannot be represented by a Region list."
+  type        = list(string)
+  default     = []
 }
 
 variable "amplify_repository_url" {
@@ -131,9 +173,14 @@ variable "db_skip_final_snapshot" {
 }
 
 variable "db_backup_retention_period" {
-  description = "Days to retain automated RDS backups. 1 is sufficient for dev; 7 for prod."
+  description = "Days to retain automated RDS backups. Use 0 to disable automated backups in dev/test; valid range is 0 to 35."
   type        = number
   default     = 7
+
+  validation {
+    condition     = var.db_backup_retention_period >= 0 && var.db_backup_retention_period <= 35
+    error_message = "db_backup_retention_period must be between 0 and 35 days. Use 0 only when disabling automated backups is approved for dev/test."
+  }
 }
 
 variable "vpc_id" {
@@ -178,6 +225,30 @@ variable "lambda_security_group_ids" {
   default     = []
 }
 
+variable "vpc_endpoint_route_table_ids" {
+  description = "Route table IDs that should receive Gateway VPC endpoints for private AWS service access from Lambda subnets."
+  type        = list(string)
+  default     = []
+}
+
+variable "enable_lambda_nat_egress" {
+  description = "Whether to create a NAT Gateway and private route table associations for Lambda outbound internet egress. Keep false until live provider ingestion is approved because NAT Gateway has hourly and data processing costs."
+  type        = bool
+  default     = false
+}
+
+variable "lambda_nat_public_subnet_id" {
+  description = "Public subnet ID where the NAT Gateway for Lambda provider egress is created. Required only when enable_lambda_nat_egress is true."
+  type        = string
+  default     = ""
+}
+
+variable "lambda_nat_route_subnet_ids" {
+  description = "Subnet IDs that should use the Terraform-managed NAT route table for outbound internet egress. Usually the Lambda subnet IDs."
+  type        = list(string)
+  default     = []
+}
+
 variable "enable_operational_alarms" {
   description = "Whether to create baseline CloudWatch operational alarms for Lambda, API Gateway, and RDS."
   type        = bool
@@ -211,4 +282,75 @@ variable "agentcore_network_mode" {
     condition     = contains(["PUBLIC", "VPC"], var.agentcore_network_mode)
     error_message = "agentcore_network_mode must be PUBLIC or VPC."
   }
+}
+
+variable "enable_ingestion_raw_archive" {
+  description = "Whether to create the S3 raw payload archive used by provider ingestion jobs."
+  type        = bool
+  default     = true
+}
+
+variable "ingestion_raw_retention_days" {
+  description = "Number of days to retain raw provider payloads in the dev archive bucket."
+  type        = number
+  default     = 30
+}
+
+variable "enable_ingestion_scheduler" {
+  description = "Whether to create an EventBridge Scheduler rule for provider ingestion. Keep false until provider credentials and target tickers are approved."
+  type        = bool
+  default     = false
+}
+
+variable "ingestion_schedule_expression" {
+  description = "EventBridge Scheduler expression for provider ingestion."
+  type        = string
+  default     = "cron(0 18 ? * MON-FRI *)"
+}
+
+variable "ingestion_schedule_provider" {
+  description = "Provider passed to the scheduled ingest_provider_batch operation."
+  type        = string
+  default     = "OpenDART"
+
+  validation {
+    condition     = contains(["OpenDART", "NAVER_NEWS"], var.ingestion_schedule_provider)
+    error_message = "ingestion_schedule_provider must be OpenDART or NAVER_NEWS."
+  }
+}
+
+variable "ingestion_schedule_tickers" {
+  description = "Tickers passed to the scheduled ingest_provider_batch operation."
+  type        = list(string)
+  default     = []
+}
+
+variable "ingestion_schedule_jobs" {
+  description = "Reviewed provider ingestion jobs to schedule. When empty, the legacy ingestion_schedule_provider/tickers variables are used."
+  type = list(object({
+    provider            = string
+    tickers             = list(string)
+    schedule_expression = optional(string)
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for job in var.ingestion_schedule_jobs : contains(["OpenDART", "NAVER_NEWS"], job.provider)
+    ])
+    error_message = "Each ingestion_schedule_jobs provider must be OpenDART or NAVER_NEWS."
+  }
+
+  validation {
+    condition = alltrue([
+      for job in var.ingestion_schedule_jobs : length(job.tickers) > 0
+    ])
+    error_message = "Each ingestion_schedule_jobs entry must include at least one ticker."
+  }
+}
+
+variable "ingestion_dlq_message_retention_seconds" {
+  description = "Retention period for failed ingestion scheduler invocation messages."
+  type        = number
+  default     = 1209600
 }

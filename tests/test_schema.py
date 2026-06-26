@@ -1,12 +1,22 @@
 from datetime import date
+import importlib.util
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session
 
-from app.orm import Base, CompanyIdentifier, IngestionRun, RecommendationScore, User, Watchlist
+from app.orm import (
+    Base,
+    ChatMessage,
+    CompanyIdentifier,
+    IngestionRun,
+    RecommendationScore,
+    User,
+    Watchlist,
+)
 
 API_ROOT = Path(__file__).resolve().parents[1]
+MIGRATION_VERSION_DIR = API_ROOT / "migrations/versions"
 
 
 EXPECTED_TABLES = {
@@ -89,13 +99,110 @@ def test_ingestion_runs_schema_is_declared() -> None:
 
     constraints = {constraint.name for constraint in IngestionRun.__table__.constraints}
     assert "uq_ingestion_runs_run_id" in constraints
+    indexes = {index.name for index in IngestionRun.__table__.indexes}
+    assert "uq_ingestion_runs_active_input_hash" in indexes
+
+
+def test_chat_messages_session_id_index_is_declared() -> None:
+    indexes = {index.name for index in ChatMessage.__table__.indexes}
+
+    assert "ix_chat_messages_session_id" in indexes
+
+
+def test_create_all_builds_chat_messages_session_id_index() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    inspector = inspect(engine)
+    indexes = {index["name"] for index in inspector.get_indexes("chat_messages")}
+    assert "ix_chat_messages_session_id" in indexes
+
+
+def test_chat_message_session_lookup_plan_uses_session_id_index() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        plan = connection.execute(
+            text("EXPLAIN QUERY PLAN SELECT * FROM chat_messages WHERE session_id = 'chat-1'")
+        ).fetchall()
+
+    plan_text = " ".join(str(column) for row in plan for column in row)
+    assert "ix_chat_messages_session_id" in plan_text
 
 
 def test_ingestion_runs_migration_creates_table() -> None:
     migration = (API_ROOT / "migrations/versions/0003_ingestion_runs.py").read_text()
+    input_hash_guard_migration = (
+        API_ROOT / "migrations/versions/0004_ingestion_input_hash_guard.py"
+    ).read_text()
+
     assert '"ingestion_runs"' in migration
     assert "uq_ingestion_runs_run_id" in migration
     assert "ix_ingestion_runs_job_type_provider_status" in migration
+    assert "uq_ingestion_runs_active_input_hash" in input_hash_guard_migration
+    assert "status IN ('started', 'succeeded')" in input_hash_guard_migration
+    assert "Cannot create uq_ingestion_runs_active_input_hash" in input_hash_guard_migration
+    assert "having count(*) > 1" in input_hash_guard_migration
+
+
+def test_chat_messages_session_id_index_migration_is_declared() -> None:
+    migration = (
+        API_ROOT / "migrations/versions/0005_chat_messages_session_id_index.py"
+    ).read_text()
+
+    assert "ix_chat_messages_session_id" in migration
+    assert '"chat_messages"' in migration
+    assert '"session_id"' in migration
+    assert 'context.dialect.name == "postgresql"' in migration
+    assert "context.autocommit_block()" in migration
+    assert "postgresql_concurrently=True" in migration
+
+
+def test_alembic_revision_chain_points_to_existing_revisions() -> None:
+    revisions: dict[str, str | None] = {}
+
+    for path in MIGRATION_VERSION_DIR.glob("*.py"):
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        assert spec is not None
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        revision = module.revision
+        down_revision = module.down_revision
+        assert down_revision is None or isinstance(down_revision, str)
+        revisions[revision] = down_revision
+
+    for revision, down_revision in revisions.items():
+        if down_revision is not None:
+            assert down_revision in revisions, f"{revision} points at missing down_revision"
+
+
+def test_alembic_version_table_is_widened_before_long_revision_ids() -> None:
+    widen_migration = (
+        MIGRATION_VERSION_DIR / "0005a_alembic_version_width.py"
+    ).read_text(encoding="utf-8")
+    chat_index_migration = (
+        MIGRATION_VERSION_DIR / "0005_chat_messages_session_id_index.py"
+    ).read_text(encoding="utf-8")
+
+    assert "revision: str = \"0005a_alembic_version_width\"" in widen_migration
+    assert "down_revision: str | None = \"0004_ingestion_input_hash_guard\"" in widen_migration
+    assert '"alembic_version"' in widen_migration
+    assert '"version_num"' in widen_migration
+    assert "sa.String(length=255)" in widen_migration
+    assert "down_revision: str | None = \"0005a_alembic_version_width\"" in chat_index_migration
+
+
+def test_db_schema_documents_input_hash_migration_precheck() -> None:
+    schema_doc = (API_ROOT / "docs/engineering/DB_SCHEMA.md").read_text()
+
+    assert "0004_ingestion_input_hash_guard" in schema_doc
+    assert "select input_hash, count(*) as duplicate_count" in schema_doc
+    assert "where status in ('started', 'succeeded')" in schema_doc
+    assert "having count(*) > 1" in schema_doc
+    assert "migration intentionally fails with an explicit message" in schema_doc
 
 
 def test_required_uniqueness_constraints_are_declared() -> None:
