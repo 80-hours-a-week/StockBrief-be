@@ -80,8 +80,8 @@ profile 파일은 팀 정책상 공개 저장소 커밋이 허용될 때만 별�
 
 - AWS CLI가 새 AWS 계정으로 로그인되어 있어야 한다.
 - 리전은 기본적으로 `ap-northeast-2`를 사용한다.
-- GitHub repo variable 또는 environment variable을 설정할 수 있는 권한이
-  있어야 한다.
+- GitHub Environment variable을 설정할 수 있는 권한이 있어야 한다.
+  팀원별 AWS 계정 전환에서는 Repository variable을 사용하지 않는다.
 - 비용 관리를 위해 계정별 AWS Budget을 먼저 설정하는 것을 권장한다.
 
 ## 팀원이 직접 준비할 값
@@ -174,6 +174,10 @@ profile 파일은 팀 정책상 공개 저장소 커밋이 허용될 때만 별�
    profile 파일을 repo에 커밋하지 않는 기본 운영에서는 Actions가 이 값을
    읽어서 runner 안에 임시 profile 파일을 만든다.
 
+   Repository variables에는 아래 값을 등록하지 않는다. 전역 변수에 특정
+   팀원의 role ARN이나 tfvars를 넣으면 다른 팀원이 `target_env`를 잘못
+   선택했을 때 다른 AWS 계정으로 배포될 수 있다.
+
    ```text
    AWS_DEV_JUNWOO_DEPLOY_ROLE_ARN
    OPERATIONAL_ALARM_EMAILS_JSON
@@ -201,6 +205,10 @@ profile 파일은 팀 정책상 공개 저장소 커밋이 허용될 때만 별�
 확인한다. 이 설정이 맞아야 `backend-dev-deploy`가 장기 access key 없이
 OIDC로 팀원 AWS 계정에 배포할 수 있다.
 
+중요: 팀원별 계정 전환 구조에서는 Repository variables를 사용하지 않는다.
+아래 값은 반드시 `StockBrief-be > Settings > Environments > <target_env> >
+Environment variables`에만 등록한다.
+
 ### 1. GitHub Environment 확인
 
 `scripts/bootstrap_github_oidc.sh`는 `--environment` 값과 같은 이름의
@@ -220,11 +228,10 @@ StockBrief-be > Settings > Environments > dev-minsu
 - 필요한 경우 Required reviewers를 추가한다. dev 자동 배포를 바로 쓰려면
   reviewer 없이 둔다.
 
-### 2. GitHub Actions deploy role variable 확인
+### 2. GitHub Actions deploy role variable 등록
 
-bootstrap은 GitHub repository 또는 environment variable에 deploy role ARN을
-저장한다. 변수 이름은 `target_env`를 대문자로 바꾸고 dash를 underscore로
-바꾼 형태를 사용한다.
+변수 이름은 `target_env`를 대문자로 바꾸고 dash를 underscore로 바꾼 형태를
+사용한다.
 
 예시:
 
@@ -233,17 +240,22 @@ target_env=dev-minsu
 variable name=AWS_DEV_MINSU_DEPLOY_ROLE_ARN
 ```
 
-GitHub에서 아래 경로 중 하나에 값이 있는지 확인한다.
+GitHub에서 아래 경로에 값을 등록한다.
 
 ```text
-StockBrief-be > Settings > Secrets and variables > Actions > Variables
 StockBrief-be > Settings > Environments > dev-minsu > Environment variables
 ```
 
-권장 방식은 environment variable이다. 여러 팀원 계정을 동시에 운영할 때
-각 Environment 안에 자기 role ARN을 두면 계정 전환 실수를 줄일 수 있다.
+Repository variables에는 등록하지 않는다. 여러 팀원 계정을 동시에 운영할 때
+각 Environment 안에 자기 role ARN을 두어야 계정 전환 실수를 줄일 수 있다.
 
-값 형식:
+Key:
+
+```text
+AWS_DEV_MINSU_DEPLOY_ROLE_ARN
+```
+
+Value:
 
 ```text
 arn:aws:iam::<account-id>:role/stockbrief-dev-minsu-github-actions-deploy
@@ -253,8 +265,16 @@ arn:aws:iam::<account-id>:role/stockbrief-dev-minsu-github-actions-deploy
 
 운영 알림 이메일은 JSON 배열 문자열로 저장한다.
 
+Key:
+
 ```text
-OPERATIONAL_ALARM_EMAILS_JSON=["name@example.com"]
+OPERATIONAL_ALARM_EMAILS_JSON
+```
+
+Value:
+
+```text
+["name@example.com"]
 ```
 
 여러 명이면 아래처럼 넣는다.
@@ -267,11 +287,13 @@ OPERATIONAL_ALARM_EMAILS_JSON=["name1@example.com","name2@example.com"]
 
 GitHub Environment `dev-minsu`에 아래 variable을 등록한다.
 
+Key:
+
 ```text
 TF_BACKEND_CONFIG_HCL
 ```
 
-값 예시:
+Value:
 
 ```hcl
 bucket         = "stockbrief-terraform-state-<account-id>-ap-northeast-2"
@@ -285,11 +307,13 @@ encrypt        = true
 
 GitHub Environment `dev-minsu`에 아래 variable을 등록한다.
 
+Key:
+
 ```text
 TFVARS_JSON
 ```
 
-값 예시:
+Value:
 
 ```json
 {
@@ -463,13 +487,15 @@ BE 배포 전환 절차:
    infra/terraform/envs/<target_env>/deploy.auto.tfvars.json
    ```
 
-2. GitHub variable이 있는지 확인한다.
+2. GitHub Environment variable이 있는지 확인한다.
 
    ```text
    AWS_<TARGET_ENV_WITH_DASHES_REPLACED_BY_UNDERSCORES>_DEPLOY_ROLE_ARN
    ```
 
    예를 들어 `dev-junwoo`는 `AWS_DEV_JUNWOO_DEPLOY_ROLE_ARN`을 사용한다.
+   이 값은 Repository variables가 아니라
+   `Settings > Environments > dev-junwoo > Environment variables`에 있어야 한다.
 
 3. `backend-dev-deploy` workflow를 아래 값으로 실행한다.
 
@@ -477,12 +503,20 @@ BE 배포 전환 절차:
    target_env=<target_env>
    ```
 
-4. Terraform output으로 나온 BE 값을 같은 계정의 FE Amplify 환경 변수에
+4. 로컬 FE smoke가 필요하면 `StockBrief-fe`에서 같은 계정의 BE Terraform
+   output으로 `.env.local`을 갱신한다.
+
+   ```bash
+   npm run sync:dev-env -- --terraform-dir ../StockBrief-be/infra/terraform
+   ```
+
+5. Terraform output으로 나온 BE 값을 같은 계정의 FE Amplify 환경 변수에
    반영한다.
 
 한 계정의 BE output을 다른 계정의 Cognito나 API Gateway 값과 섞어 쓰면
 안 된다. API Gateway, Cognito User Pool, Cognito App Client, Hosted UI domain,
-Amplify environment variable은 모두 같은 target profile에서 나온 값이어야 한다.
+로컬 `.env.local`, Amplify environment variable은 모두 같은 target profile에서
+나온 값이어야 한다.
 
 ## FE Amplify 콘솔 수동 생성 방법
 
@@ -505,9 +539,15 @@ backend deployment IAM이다.
    NEXT_PUBLIC_COGNITO_REGION=ap-northeast-2
    NEXT_PUBLIC_COGNITO_USER_POOL_ID=<cognito_user_pool_id>
    NEXT_PUBLIC_COGNITO_APP_CLIENT_ID=<cognito_app_client_id>
-   NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN=<cognito_hosted_ui_domain에서 https:// 제거>
+   NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN=<cognito_hosted_ui_domain>
    NEXT_PUBLIC_COGNITO_REDIRECT_URI=https://main.<amplify-default-domain>/auth/callback
    ```
+
+   `cognito_hosted_ui_domain` Terraform output은
+   `https://...amazoncognito.com` 형태의 전체 URL이다. Amplify environment
+   variable과 로컬 `.env.local`에는 이 output 값을 그대로 넣는다. FE 인증
+   코드는 `https://`가 있거나 없어도 Hosted UI domain을 정규화하지만,
+   수동 설정 기준은 Terraform output 원문을 섞지 않고 그대로 쓰는 것이다.
 
 7. Amplify를 한 번 배포하고 default domain을 기록한다.
 8. target profile의 `cognito_callback_urls`와 `cognito_logout_urls`에 Amplify

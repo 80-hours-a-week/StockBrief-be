@@ -47,7 +47,7 @@ For a new AWS account or environment, first run the one-time GitHub OIDC and
 Terraform state bootstrap documented in
 `docs/engineering/DEPLOYMENT_BOOTSTRAP.md`. The bootstrap creates the remote
 state bucket, lock table, GitHub Actions OIDC provider, deploy role, and GitHub
-repository variables required by `.github/workflows/backend-dev-deploy.yml`.
+Environment variables required by `.github/workflows/backend-dev-deploy.yml`.
 
 1. Package the backend Lambda zip:
 
@@ -307,7 +307,23 @@ NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN
 NEXT_PUBLIC_COGNITO_REDIRECT_URI
 ```
 
-`NEXT_PUBLIC_API_BASE_URL` is populated from the API Gateway output in Terraform. For local development, keep using `.env.example`.
+`NEXT_PUBLIC_API_BASE_URL` is populated from the API Gateway output in
+Terraform. `NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN` should use the
+`cognito_hosted_ui_domain` Terraform output as-is, including the `https://`
+scheme. The frontend normalizes Hosted UI domains with or without the scheme,
+but manual Amplify variables and local `.env.local` files should follow the
+Terraform output shape so account switching stays predictable.
+
+For local development against a deployed dev stack, regenerate
+`StockBrief-fe/.env.local` from the active backend outputs:
+
+```bash
+cd ../StockBrief-fe
+npm run sync:dev-env -- --terraform-dir ../StockBrief-be/infra/terraform
+```
+
+The generated `.env.local` contains only public frontend values and must remain
+outside git.
 
 For Terraform-created Amplify apps, AWS requires the Amplify GitHub App to be installed and a GitHub access token to be supplied during app creation. Pass it through `TF_VAR_amplify_access_token`; do not commit it. After the app exists, Terraform ignores `access_token` drift so GitHub Actions can update the app without storing a personal GitHub token as a repository secret.
 
@@ -806,7 +822,7 @@ Bootstrap resources are generated per AWS account:
 | GitHub OIDC provider | `token.actions.githubusercontent.com` |
 | GitHub deploy role | `stockbrief-<target_env>-github-actions-deploy` |
 
-Required GitHub repository variables:
+Required GitHub Environment variables:
 
 | Variable | Value |
 | --- | --- |
@@ -814,6 +830,12 @@ Required GitHub repository variables:
 | `OPERATIONAL_ALARM_EMAILS_JSON` | JSON list of alarm recipient emails |
 | `TF_BACKEND_CONFIG_HCL` | Terraform backend HCL for the selected GitHub Environment |
 | `TFVARS_JSON` | Terraform variable JSON for the selected GitHub Environment |
+
+For rotating team AWS accounts, keep these values in the matching GitHub
+Environment, for example `Settings > Environments > dev-junwoo > Environment
+variables`. Do not put account-specific deploy role ARNs, backend config, or
+tfvars in repository-level variables; global variables make it too easy to run
+one team member's `target_env` against another team member's AWS account.
 
 When building `TFVARS_JSON`, keep `amplify_cognito_redirect_uri` empty for the
 console-managed Amplify flow unless Terraform creates Amplify for that
@@ -825,9 +847,8 @@ the selected S3 backend config, plans with the selected tfvars file, and applies
 the plan to the chosen profile.
 
 `AWS_DEV_DEPLOY_ROLE_ARN` remains supported for the default `dev` profile only.
-For rotating team accounts, prefer explicit variables such as
-`AWS_DEV_JUNWOO_DEPLOY_ROLE_ARN`. Move each environment's values into matching
-GitHub Environment variables if the team wants stricter separation. Enable
+For rotating team accounts, use explicit Environment variables such as
+`AWS_DEV_JUNWOO_DEPLOY_ROLE_ARN` inside the matching GitHub Environment. Enable
 required reviewers on dev environments only if the team wants manual approval
 before every apply.
 

@@ -129,13 +129,22 @@ def test_new_aws_bootstrap_documents_manual_amplify_account_switching() -> None:
     bootstrap_doc = (
         REPOSITORY_ROOT / "docs/engineering/NEW_AWS_BOOTSTRAP.md"
     ).read_text(encoding="utf-8")
+    terraform_readme = (REPOSITORY_ROOT / "infra/terraform/README.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "FE Amplify 콘솔 수동 생성 방법" in bootstrap_doc
     assert "현재 활성 AWS 계정마다 Amplify app을 하나 만든다" in bootstrap_doc
     assert "NEXT_PUBLIC_API_BASE_URL=<api_base_url>/v1" in bootstrap_doc
     assert "NEXT_PUBLIC_COGNITO_USER_POOL_ID=<cognito_user_pool_id>" in bootstrap_doc
     assert "NEXT_PUBLIC_COGNITO_APP_CLIENT_ID=<cognito_app_client_id>" in bootstrap_doc
-    assert "NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN=<cognito_hosted_ui_domain에서 https:// 제거>" in bootstrap_doc
+    assert "NEXT_PUBLIC_COGNITO_HOSTED_UI_DOMAIN=<cognito_hosted_ui_domain>" in bootstrap_doc
+    assert "Amplify environment" in bootstrap_doc
+    assert "로컬 `.env.local`에는 이 output 값을 그대로 넣는다" in bootstrap_doc
+    assert "`cognito_hosted_ui_domain` Terraform output as-is" in terraform_readme
+    assert "including the `https://`" in terraform_readme
+    assert "npm run sync:dev-env -- --terraform-dir ../StockBrief-be/infra/terraform" in bootstrap_doc
+    assert "로컬 `.env.local`, Amplify environment variable" in bootstrap_doc
     assert "callback: https://main.<amplify-default-domain>/auth/callback" in bootstrap_doc
     assert "Amplify access token이나" in bootstrap_doc
 
@@ -416,6 +425,15 @@ def test_terraform_readme_documents_external_api_secret_update_runbook() -> None
     assert "outbound internet egress" in terraform_readme
 
 
+def test_terraform_readme_documents_frontend_local_env_sync() -> None:
+    terraform_readme = (REPOSITORY_ROOT / "infra/terraform/README.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "npm run sync:dev-env -- --terraform-dir ../StockBrief-be/infra/terraform" in terraform_readme
+    assert "The generated `.env.local` contains only public frontend values" in terraform_readme
+
+
 def test_deployment_bootstrap_documents_dev_cost_pause_and_resume() -> None:
     deployment_doc = (
         REPOSITORY_ROOT / "docs/engineering/DEPLOYMENT_BOOTSTRAP.md"
@@ -591,7 +609,14 @@ def test_github_deploy_role_policy_scopes_prefix_named_resources() -> None:
         "ec2:AssociateRouteTable",
         "rds:CreateDBProxy",
         "logs:CreateLogGroup",
+        "logs:CreateLogDelivery",
+        "logs:DeleteLogDelivery",
+        "logs:DescribeResourcePolicies",
+        "logs:GetLogDelivery",
+        "logs:ListLogDeliveries",
+        "logs:PutResourcePolicy",
         "logs:TagResource",
+        "logs:UpdateLogDelivery",
         "cloudwatch:DescribeAlarms",
     ]:
         assert action in wildcard_actions
@@ -612,6 +637,10 @@ def test_github_deploy_role_policy_scopes_prefix_named_resources() -> None:
     assert "`apigateway:TagResource`" in deployment_doc
     assert "`apigateway:UntagResource`" in deployment_doc
     assert "`apigateway:*`" in deployment_doc
+    assert "HTTP API access logging" in deployment_doc
+    assert "`logs:CreateLogDelivery`" in deployment_doc
+    assert "`logs:PutResourcePolicy`" in deployment_doc
+    assert "`logs:UpdateLogDelivery`" in deployment_doc
     assert "Analyzer-valid narrower action set" in deployment_doc
     assert "Prefer adding a narrow" in deployment_doc
     assert "PR #164 covers only the apply blocker" in deployment_doc
@@ -625,6 +654,7 @@ def test_github_deploy_role_policy_scopes_prefix_named_resources() -> None:
     assert "live" in deployment_doc
     assert "deploy role inline policy" in deployment_doc
     assert "no longer fails on" in deployment_doc
+    assert "`logs:CreateLogDelivery`" in deployment_doc
     assert "`rds!db-*` exception remains part of the least-privilege" in deployment_doc
     assert "Keep the least-privilege hardening issue open" in deployment_doc
     assert "`backend-dev-deploy` verification are complete" in deployment_doc
@@ -640,7 +670,7 @@ def test_bootstrap_reconciles_dev_environment_branch_policy_to_main_only() -> No
 
     policy_reconciliation = bootstrap_script[
         bootstrap_script.index("obsolete_branch_policies=") :
-        bootstrap_script.index("echo \"Setting GitHub repository variables")
+        bootstrap_script.index("echo \"Setting GitHub Environment variables")
     ]
 
     assert "obsolete_branch_policies" in policy_reconciliation
