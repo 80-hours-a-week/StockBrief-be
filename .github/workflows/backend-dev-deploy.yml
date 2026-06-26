@@ -10,6 +10,11 @@ on:
         required: true
         default: dev
         type: string
+      apply:
+        description: "Apply the Terraform plan. Leave false for plan-only validation."
+        required: true
+        default: false
+        type: boolean
 
 env:
   AWS_REGION: ap-northeast-2
@@ -172,5 +177,10 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
 
       - name: Terraform apply
+        if: github.event_name == 'push' || inputs.apply == true
         run: terraform apply -input=false -auto-approve tfplan
         working-directory: ${{ env.TF_DIR }}
+
+      - name: Skip Terraform apply
+        if: github.event_name == 'workflow_dispatch' && inputs.apply != true
+        run: echo "Plan-only validation completed. Re-run with apply=true to apply this plan."

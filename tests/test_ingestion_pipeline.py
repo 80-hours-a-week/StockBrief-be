@@ -16,6 +16,7 @@ from app.services.external.types import ExternalApiResult, ExternalRequest, Exte
 from app.services import ingestion as ingestion_module
 from app.services.ingestion import (
     check_ingestion_readiness,
+    check_ingestion_scheduler_enable_gate,
     check_provider_egress,
     NoopPayloadArchiver,
     ProviderIngestionRequest,
@@ -1107,3 +1108,83 @@ def test_check_provider_egress_rejects_unsupported_provider() -> None:
         "checks": {"providers": {}},
         "issues": [{"code": "unsupported_provider", "provider": "UNKNOWN"}],
     }
+
+
+def test_check_ingestion_scheduler_enable_gate_blocks_until_all_checks_pass(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.ingestion.check_ingestion_readiness",
+        lambda: {"ok": False, "issues": [{"code": "missing_provider_credential"}]},
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion.check_raw_archive_write",
+        lambda: {"ok": True, "issues": []},
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion.check_provider_egress",
+        lambda event: {"ok": False, "issues": [{"code": "provider_egress_unreachable"}]},
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion.get_ingestion_status",
+        lambda event: {"ok": True, "summary": {"recent_run_count": 0}},
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion.reconcile_stale_ingestion_runs",
+        lambda event: {"ok": True, "dry_run": True, "stale_count": 1, "issues": []},
+    )
+
+    result = check_ingestion_scheduler_enable_gate(
+        {"providers": [OPENDART_PROVIDER], "tickers": ["005930"], "limit": 3}
+    )
+
+    assert result["ok"] is False
+    assert result["scheduler_enable_ready"] is False
+    assert result["providers"] == [OPENDART_PROVIDER]
+    assert result["tickers"] == ["005930"]
+    assert result["blockers"] == [
+        {
+            "code": "readiness_not_ready",
+            "check": "readiness",
+            "issues": [{"code": "missing_provider_credential"}],
+        },
+        {
+            "code": "provider_egress_not_ready",
+            "check": "provider_egress",
+            "issues": [{"code": "provider_egress_unreachable"}],
+        },
+        {
+            "code": "stale_ingestion_runs_present",
+            "check": "stale_runs",
+            "stale_count": 1,
+        },
+    ]
+
+
+def test_check_ingestion_scheduler_enable_gate_passes_when_all_checks_pass(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.ingestion.check_ingestion_readiness",
+        lambda: {"ok": True, "issues": []},
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion.check_raw_archive_write",
+        lambda: {"ok": True, "issues": []},
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion.check_provider_egress",
+        lambda event: {"ok": True, "issues": [], "checks": {"providers": {}}},
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion.get_ingestion_status",
+        lambda event: {"ok": True, "summary": {"recent_run_count": 2}},
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion.reconcile_stale_ingestion_runs",
+        lambda event: {"ok": True, "dry_run": True, "stale_count": 0, "issues": []},
+    )
+
+    result = check_ingestion_scheduler_enable_gate({})
+
+    assert result["ok"] is True
+    assert result["scheduler_enable_ready"] is True
+    assert result["providers"] == [OPENDART_PROVIDER, NAVER_PROVIDER]
+    assert result["tickers"] == ["005930"]
+    assert result["blockers"] == []

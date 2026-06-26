@@ -519,6 +519,45 @@ def reconcile_stale_ingestion_runs(event: dict[str, object] | None = None) -> di
         )
 
 
+def check_ingestion_scheduler_enable_gate(event: dict[str, object] | None = None) -> dict[str, Any]:
+    request = event or {}
+    providers = _event_providers(request) or list(SUPPORTED_PROVIDERS)
+    tickers = _event_tickers(request) or ["005930"]
+    status_limit = _status_limit(request.get("limit"))
+    stale_max_age_minutes = _stale_run_max_age_minutes(request.get("max_age_minutes"))
+
+    readiness = check_ingestion_readiness()
+    raw_archive = check_raw_archive_write()
+    provider_egress = check_provider_egress({"providers": providers})
+    status = get_ingestion_status({"tickers": tickers, "limit": status_limit})
+    stale_runs = reconcile_stale_ingestion_runs(
+        {
+            "tickers": tickers,
+            "providers": providers,
+            "max_age_minutes": stale_max_age_minutes,
+            "dry_run": True,
+        }
+    )
+
+    checks = {
+        "readiness": readiness,
+        "raw_archive": raw_archive,
+        "provider_egress": provider_egress,
+        "status": status,
+        "stale_runs": stale_runs,
+    }
+    blockers = _scheduler_enable_gate_blockers(checks)
+
+    return {
+        "ok": not blockers,
+        "scheduler_enable_ready": not blockers,
+        "providers": providers,
+        "tickers": tickers,
+        "checks": checks,
+        "blockers": blockers,
+    }
+
+
 def summarize_ingestion_status(
     session: Session,
     *,
@@ -824,6 +863,31 @@ def _provider_egress_selection(event: dict[str, object]) -> tuple[list[str], lis
         if provider not in selected:
             selected.append(provider)
     return selected, issues
+
+
+def _scheduler_enable_gate_blockers(checks: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    for check_name in ("readiness", "raw_archive", "provider_egress", "status", "stale_runs"):
+        result = checks[check_name]
+        if result.get("ok") is not True:
+            blockers.append(
+                {
+                    "code": f"{check_name}_not_ready",
+                    "check": check_name,
+                    "issues": result.get("issues", []),
+                }
+            )
+
+    stale_runs = checks["stale_runs"]
+    if stale_runs.get("ok") is True and stale_runs.get("stale_count", 0) > 0:
+        blockers.append(
+            {
+                "code": "stale_ingestion_runs_present",
+                "check": "stale_runs",
+                "stale_count": stale_runs.get("stale_count", 0),
+            }
+        )
+    return blockers
 
 
 def _check_provider_endpoint_egress(
