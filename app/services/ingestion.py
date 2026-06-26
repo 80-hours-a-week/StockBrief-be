@@ -502,6 +502,7 @@ def get_ingestion_status(event: dict[str, object] | None = None) -> dict[str, An
         return summarize_ingestion_status(
             session,
             tickers=_event_tickers(request),
+            providers=_event_providers(request),
             limit=_status_limit(request.get("limit")),
         )
 
@@ -529,7 +530,13 @@ def check_ingestion_scheduler_enable_gate(event: dict[str, object] | None = None
     readiness = check_ingestion_readiness()
     raw_archive = check_raw_archive_write()
     provider_egress = check_provider_egress({"providers": providers})
-    status = get_ingestion_status({"tickers": tickers, "limit": status_limit})
+    status = get_ingestion_status(
+        {
+            "tickers": tickers,
+            "providers": providers,
+            "limit": status_limit,
+        }
+    )
     stale_runs = reconcile_stale_ingestion_runs(
         {
             "tickers": tickers,
@@ -562,9 +569,11 @@ def summarize_ingestion_status(
     session: Session,
     *,
     tickers: list[str] | None = None,
+    providers: list[str] | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
     normalized_tickers = _unique_tickers(tickers or [])
+    normalized_providers = _unique_providers(providers or [])
     run_statement = (
         select(IngestionRun)
         .order_by(IngestionRun.started_at.desc(), IngestionRun.run_id.desc())
@@ -574,6 +583,8 @@ def summarize_ingestion_status(
         run_statement = run_statement.where(
             IngestionRun.target_scope["ticker"].as_string().in_(normalized_tickers)
         )
+    if normalized_providers:
+        run_statement = run_statement.where(IngestionRun.provider.in_(normalized_providers))
     runs = session.scalars(run_statement).all()
     evidence_statement = (
         select(EvidenceChunk, SourceDocument)
@@ -583,6 +594,10 @@ def summarize_ingestion_status(
     )
     if normalized_tickers:
         evidence_statement = evidence_statement.where(EvidenceChunk.ticker.in_(normalized_tickers))
+    if normalized_providers:
+        evidence_statement = evidence_statement.where(
+            SourceDocument.source_name.in_(normalized_providers)
+        )
     latest_evidence = session.execute(evidence_statement).all()
     return {
         "ok": True,
@@ -591,6 +606,7 @@ def summarize_ingestion_status(
             "recent_run_count": len(runs),
             "latest_evidence_count": len(latest_evidence),
             "ticker_filter": normalized_tickers,
+            "provider_filter": normalized_providers,
         },
         "recent_runs": [_run_status_dict(run) for run in runs],
         "latest_evidence": [

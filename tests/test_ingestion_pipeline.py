@@ -537,6 +537,25 @@ def test_ingestion_status_summarizes_recent_runs_and_latest_evidence(
     monkeypatch,
     seeded_session: Session,
 ) -> None:
+    def fake_list_disclosures(self, *, ticker: str, corp_code=None, page_count: int = 10):
+        return ExternalApiResult(
+            provider=OPENDART_PROVIDER,
+            endpoint="/list.json",
+            cache_key=f"disclosures:{ticker}:mock:{page_count}",
+            data_status="available",
+            status_code=200,
+            payload={
+                "list": [
+                    {
+                        "rcept_no": f"20260618{ticker}",
+                        "report_nm": f"{ticker} 상태 확인용 공시",
+                        "rcept_dt": "20260618",
+                        "rm": "정기공시",
+                    }
+                ]
+            },
+        )
+
     def fake_search_news(self, *, ticker: str, company_name: str, display: int = 10):
         return ExternalApiResult(
             provider=NAVER_PROVIDER,
@@ -557,13 +576,22 @@ def test_ingestion_status_summarizes_recent_runs_and_latest_evidence(
             },
         )
 
+    monkeypatch.setattr(
+        "app.services.ingestion.OpenDartClient.list_disclosures",
+        fake_list_disclosures,
+    )
     monkeypatch.setattr("app.services.ingestion.NaverNewsClient.search_news", fake_search_news)
-    service = ProviderIngestionService(
+    naver_service = ProviderIngestionService(
         seeded_session,
         settings=Settings(NAVER_CLIENT_ID="id", NAVER_CLIENT_SECRET="secret"),
         archiver=NoopPayloadArchiver(),
     )
-    ingest_result = service.run_provider_batch(
+    opendart_service = ProviderIngestionService(
+        seeded_session,
+        settings=Settings(OPENDART_API_KEY="test-key"),
+        archiver=NoopPayloadArchiver(),
+    )
+    ingest_result = naver_service.run_provider_batch(
         ProviderIngestionRequest(
             provider=NAVER_PROVIDER,
             tickers=["005930"],
@@ -571,7 +599,7 @@ def test_ingestion_status_summarizes_recent_runs_and_latest_evidence(
             news_display=1,
         )
     )
-    other_ticker_result = service.run_provider_batch(
+    other_ticker_result = naver_service.run_provider_batch(
         ProviderIngestionRequest(
             provider=NAVER_PROVIDER,
             tickers=["000660"],
@@ -579,17 +607,28 @@ def test_ingestion_status_summarizes_recent_runs_and_latest_evidence(
             news_display=1,
         )
     )
+    other_provider_result = opendart_service.run_provider_batch(
+        ProviderIngestionRequest(
+            provider=OPENDART_PROVIDER,
+            tickers=["005930"],
+            source_date="2026-06-18",
+            page_count=1,
+        )
+    )
 
     status = summarize_ingestion_status(
         seeded_session,
         tickers=["005930"],
+        providers=[NAVER_PROVIDER],
         limit=5,
     )
 
     assert ingest_result["ok"] is True
     assert other_ticker_result["ok"] is True
+    assert other_provider_result["ok"] is True
     assert status["ok"] is True
     assert status["summary"]["ticker_filter"] == ["005930"]
+    assert status["summary"]["provider_filter"] == [NAVER_PROVIDER]
     assert status["summary"]["run_status_counts"]["succeeded"] >= 1
     assert status["summary"]["recent_run_count"] >= 1
     assert status["summary"]["latest_evidence_count"] >= 1
@@ -608,6 +647,7 @@ def test_ingestion_status_summarizes_recent_runs_and_latest_evidence(
     assert latest_news[0]["source_type"] == "news"
     assert latest_news[0]["published_at"] is not None
     assert latest_news[0]["fetched_at"] is not None
+    assert all(item["source_name"] == NAVER_PROVIDER for item in status["latest_evidence"])
 
 
 def test_reconcile_stale_started_runs_defaults_to_dry_run_and_filters_scope(
