@@ -673,6 +673,23 @@ copying model text into review comments. If the smoke fails, keep
 `chat_provider = "mock"` and resolve Bedrock model access, region, or IAM before
 changing Terraform variables.
 
+After applying a profile that switches the deployed API to
+`chat_provider = "bedrock"`, record `/v1/chat` live smoke evidence on the PR or
+linked issue before closing the Bedrock enablement work. The post-deploy smoke
+must confirm:
+
+- the existing `/v1/chat` response contract is preserved, including `data.answer`,
+  `data.citations`, `data.policy_status`, `data.disclaimer`, and
+  `data.used_evidence_ids`;
+- the citation guard remains active, so Bedrock answers cannot return unsupported
+  or invented evidence IDs;
+- Bedrock runtime failures, empty answers, unsafe output, and citation guard
+  failures remain fail-closed as `CHAT_PROVIDER_UNAVAILABLE` instead of falling
+  back silently to mock output.
+
+Keep `Refs #201` rather than `Closes #201` on the Terraform profile PR until
+this deployed `/v1/chat` evidence is attached.
+
 ## Secrets Manager
 
 Secret values must be filled outside git. The placeholder secret names are:

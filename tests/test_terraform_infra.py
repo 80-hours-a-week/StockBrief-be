@@ -280,6 +280,11 @@ def test_direct_bedrock_chat_provider_is_conditionally_wired() -> None:
     assert "provider on `mock`" in terraform_readme
     assert "current dev profile has Bedrock direct chat enabled" in terraform_readme
     assert "answer_sha256_prefix=e483f1699288" in terraform_readme
+    assert "After applying a profile that switches the deployed API" in terraform_readme
+    assert "existing `/v1/chat` response contract is preserved" in terraform_readme
+    assert "citation guard remains active" in terraform_readme
+    assert "fail-closed as `CHAT_PROVIDER_UNAVAILABLE`" in terraform_readme
+    assert "Keep `Refs #201` rather than `Closes #201`" in terraform_readme
     assert deploy_tfvars["chat_provider"] == "bedrock"
     assert deploy_tfvars["bedrock_chat_model_id"] == "apac.amazon.nova-micro-v1:0"
     assert deploy_tfvars["bedrock_chat_region"] == ""
