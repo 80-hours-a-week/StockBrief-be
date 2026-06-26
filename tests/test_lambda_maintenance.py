@@ -25,6 +25,7 @@ def test_maintenance_rejects_unknown_operation() -> None:
     assert "check_ingestion_readiness" in result["supported_operations"]
     assert "check_raw_archive_write" in result["supported_operations"]
     assert "check_provider_egress" in result["supported_operations"]
+    assert "check_ingestion_scheduler_enable_gate" in result["supported_operations"]
     assert "ingest_provider_batch" in result["supported_operations"]
     assert "get_ingestion_status" in result["supported_operations"]
     assert "reconcile_stale_ingestion_runs" in result["supported_operations"]
@@ -65,6 +66,26 @@ def test_maintenance_routes_provider_egress_operation(monkeypatch) -> None:
     result = handle_maintenance_event(event)
 
     assert result == {"ok": True, "checks": {"providers": {}}}
+    assert calls == [event]
+
+
+def test_maintenance_routes_scheduler_enable_gate_operation(monkeypatch) -> None:
+    calls = []
+
+    def fake_check(event):
+        calls.append(event)
+        return {"ok": False, "scheduler_enable_ready": False, "blockers": []}
+
+    monkeypatch.setattr("app.maintenance.check_ingestion_scheduler_enable_gate", fake_check)
+
+    event = {
+        "stockbrief_operation": "check_ingestion_scheduler_enable_gate",
+        "providers": ["OpenDART", "NAVER_NEWS"],
+        "tickers": ["005930"],
+    }
+    result = handle_maintenance_event(event)
+
+    assert result == {"ok": False, "scheduler_enable_ready": False, "blockers": []}
     assert calls == [event]
 
 
