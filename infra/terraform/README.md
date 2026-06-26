@@ -619,8 +619,8 @@ agentcore deploy --diff
 
 ## Direct Bedrock Chat Provider
 
-The backend defaults to `chat_provider = "mock"` so local/dev smoke tests do not
-call external AI services. To validate the direct Bedrock provider, set:
+The backend examples default to `chat_provider = "mock"` so local smoke tests do
+not call external AI services. To validate the direct Bedrock provider, set:
 
 ```hcl
 chat_provider         = "bedrock"
@@ -650,6 +650,12 @@ different foundation model ARN patterns; add those entries through
 AWS profile routing list and IAM examples. Keep the provider on `mock` unless
 Bedrock model access, expected request volume, and cost are approved for the
 day's validation.
+
+The current dev profile has Bedrock direct chat enabled for issue #201 using
+`apac.amazon.nova-micro-v1:0` in `ap-northeast-2`. Live preflight evidence from
+the dev AWS account returned `ok=true`, `answer_length=36`,
+`answer_sha256_prefix=e483f1699288`, and `matched_terms=[]`; apply the profile
+only while this model access and cost approval remain valid.
 
 Before switching the deployed API to `chat_provider = "bedrock"`, verify that
 the active AWS account can invoke the selected Bedrock model:
