@@ -474,7 +474,8 @@ def test_deployment_bootstrap_documents_dev_cost_pause_and_resume() -> None:
     assert "aws lambda put-function-concurrency" in deployment_doc
     assert "--reserved-concurrent-executions 0" in deployment_doc
     assert "aws lambda delete-function-concurrency" in deployment_doc
-    assert "enable_ingestion_scheduler = false" in deployment_doc
+    assert "Keep only reviewed `enable_ingestion_scheduler` jobs" in deployment_doc
+    assert "Disable schedules before" in deployment_doc
     assert "terraform plan -var-file=envs/dev/deploy.auto.tfvars.json" in deployment_doc
     assert "Do not delete Terraform-managed resources from the AWS console" in deployment_doc
     assert "Do not use `terraform apply` as a blind repair step" in deployment_doc
@@ -522,6 +523,7 @@ def test_deployment_bootstrap_documents_nat_egress_plan_review_checklist() -> No
     assert "Elastic IP for the NAT Gateway" in checklist
     assert "NAT route table" in checklist
     assert "Lambda subnet route table associations" in checklist
+    assert "S3 Gateway endpoint route table update" in checklist
     assert "Amplify in-place update" in checklist
     assert "Cognito client in-place update" in checklist
     assert "RDS in-place update" in checklist
@@ -534,6 +536,7 @@ def test_deployment_bootstrap_documents_nat_egress_plan_review_checklist() -> No
     assert "values to match that environment's Terraform resources" in checklist
     assert "aws ec2 describe-nat-gateways" in checklist
     assert "aws ec2 describe-route-tables" in checklist
+    assert "Name=association.subnet-id" in checklist
     assert "If any non-NAT item is unexplained, do not apply" in checklist
 
 

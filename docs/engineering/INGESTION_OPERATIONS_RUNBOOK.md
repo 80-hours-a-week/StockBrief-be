@@ -29,7 +29,9 @@ payloads into PR comments, shared logs, or issue comments.
   terraform output external_api_secret_arn
   ```
 
-- `enable_ingestion_scheduler` remains `false`.
+- `enable_ingestion_scheduler` matches the reviewed dev tfvars. If schedules
+  already exist, keep them out of unrelated NAT or networking changes unless a
+  reviewer explicitly approves disabling scheduled ingestion.
 - External API credentials are stored in Secrets Manager outside git. Use the
   repository helper so the secret payload is written to a temporary file and
   removed automatically:
@@ -52,6 +54,9 @@ payloads into PR comments, shared logs, or issue comments.
   Lambda private subnets in `infra/terraform/envs/dev/deploy.auto.tfvars.json`.
   The NAT public subnet must not be included in the route subnet list. Turn NAT
   off again before pausing the dev environment if no live provider work remains.
+  When the S3 raw archive Gateway endpoint is enabled, the managed NAT route
+  table is also attached to that endpoint so raw archive writes continue through
+  the Gateway endpoint after the Lambda subnet route table association changes.
 
   ```bash
   aws lambda invoke \
