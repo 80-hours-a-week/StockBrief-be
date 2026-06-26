@@ -578,6 +578,22 @@ AWS profile routing list and IAM examples. Keep the provider on `mock` unless
 Bedrock model access, expected request volume, and cost are approved for the
 day's validation.
 
+Before switching the deployed API to `chat_provider = "bedrock"`, verify that
+the active AWS account can invoke the selected Bedrock model:
+
+```bash
+.venv/bin/python scripts/check_bedrock_chat_smoke.py \
+  --region ap-northeast-2 \
+  --model-id apac.amazon.nova-micro-v1:0
+```
+
+The smoke command prints a redacted JSON result with `ok`, `answer_length`,
+`answer_sha256_prefix`, and `matched_terms`. It does not print the raw model
+answer, so the output can be attached to PR or deployment evidence without
+copying model text into review comments. If the smoke fails, keep
+`chat_provider = "mock"` and resolve Bedrock model access, region, or IAM before
+changing Terraform variables.
+
 ## Secrets Manager
 
 Secret values must be filled outside git. The placeholder secret names are:

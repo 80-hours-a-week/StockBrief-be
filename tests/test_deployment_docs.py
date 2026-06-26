@@ -71,6 +71,22 @@ def test_backend_ci_checks_lambda_packaging_script_on_pr() -> None:
     assert 'test "$first_hash" = "$second_hash"' in workflow
 
 
+def test_bedrock_chat_smoke_runbook_documents_redacted_validation() -> None:
+    terraform_readme = (REPOSITORY_ROOT / "infra/terraform/README.md").read_text(
+        encoding="utf-8"
+    )
+    script = (REPOSITORY_ROOT / "scripts/check_bedrock_chat_smoke.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "scripts/check_bedrock_chat_smoke.py" in terraform_readme
+    assert "--model-id apac.amazon.nova-micro-v1:0" in terraform_readme
+    assert "`answer_sha256_prefix`" in terraform_readme
+    assert "does not print the raw model" in terraform_readme
+    assert "PROHIBITED_MODEL_OUTPUT_TERMS" in script
+    assert "answer_sha256_prefix" in script
+
+
 def test_backend_dev_deploy_checks_assumed_account_matches_backend() -> None:
     workflow = (
         REPOSITORY_ROOT / ".github/workflows/backend-dev-deploy.yml"
@@ -81,6 +97,11 @@ def test_backend_dev_deploy_checks_assumed_account_matches_backend() -> None:
 
     assert "Verify deploy account matches Terraform backend" in workflow
     assert "target_env:" in workflow
+    assert "apply:" in workflow
+    assert "default: false" in workflow
+    assert "github.event_name == 'push' || inputs.apply == true" in workflow
+    assert "Skip Terraform apply" in workflow
+    assert "Plan-only validation completed" in workflow
     assert 'TARGET_ENV: ${{ github.event.inputs.target_env || \'dev\' }}' in workflow
     assert "backends/{target_env}.hcl" in workflow
     assert "envs/{target_env}/deploy.auto.tfvars.json" in workflow
@@ -90,6 +111,8 @@ def test_backend_dev_deploy_checks_assumed_account_matches_backend() -> None:
     assert "cannot accidentally deploy against a backend that" in deployment_doc
     assert "During account transition work, this failure is the expected guardrail" in deployment_doc
     assert "not as a deployment regression" in deployment_doc
+    assert "Manual workflow dispatch defaults to plan-only validation" in deployment_doc
+    assert "`apply=true` only after reviewing the plan" in deployment_doc
 
 
 def test_backend_dev_deploy_supports_target_environment_profiles() -> None:
@@ -114,7 +137,10 @@ def test_backend_dev_deploy_supports_target_environment_profiles() -> None:
     assert 'terraform init' in workflow
     assert '-backend-config="${{ steps.deploy-profile.outputs.tf_backend_config }}"' in workflow
     assert '-var-file="${{ steps.deploy-profile.outputs.tf_var_file }}"' in workflow
+    assert "inputs.apply != true" in workflow
     assert "target_env=dev-junwoo" in bootstrap_doc
+    assert "apply=false" in bootstrap_doc
+    assert "apply=true" in bootstrap_doc
     assert "backends/dev-junwoo.hcl" in bootstrap_doc
     assert "envs/dev-junwoo/deploy.auto.tfvars.json" in bootstrap_doc
     assert "`target_env=dev` 또는" in bootstrap_doc
