@@ -127,7 +127,7 @@ def test_new_aws_bootstrap_does_not_pin_old_dev_account() -> None:
     assert "rtb-0de4e4c9b811cd39c" in deploy_tfvars
 
 
-def test_dev_deploy_tfvars_documents_low_cost_local_only_bootstrap() -> None:
+def test_dev_deploy_tfvars_documents_local_only_web_bootstrap() -> None:
     deploy_tfvars = json.loads(_read("envs/dev/deploy.auto.tfvars.json"))
     terraform_readme = _read("README.md")
 
@@ -138,9 +138,10 @@ def test_dev_deploy_tfvars_documents_low_cost_local_only_bootstrap() -> None:
     assert "amplifyapp.com" not in deploy_tfvars["cors_allowed_origins"]
     assert all("amplifyapp.com" not in url for url in deploy_tfvars["cognito_callback_urls"])
     assert all("amplifyapp.com" not in url for url in deploy_tfvars["cognito_logout_urls"])
-    assert "low-cost," in terraform_readme
-    assert "local-only bootstrap posture" in terraform_readme
-    assert "track the callback, logout, and CORS change through" in terraform_readme
+    assert "keeps Amplify disabled" in terraform_readme
+    assert "limited to localhost and loopback development origins" in terraform_readme
+    assert "track the callback, logout, and CORS" in terraform_readme
+    assert "change through" in terraform_readme
     assert "#162" in terraform_readme
     assert "keep `amplify_cognito_redirect_uri` empty" in terraform_readme
     assert "Keep `agentcore_runtime_container_uri` empty" in terraform_readme
@@ -154,20 +155,21 @@ def test_dev_account_transition_requires_backend_deploy_result_on_issue_52() -> 
     assert "record the success or expected guard failure on #52" in terraform_readme
 
 
-def test_dev_live_ingestion_enablement_is_tracked_after_low_cost_bootstrap() -> None:
+def test_dev_live_ingestion_smoke_keeps_scheduler_disabled() -> None:
     deploy_tfvars = json.loads(_read("envs/dev/deploy.auto.tfvars.json"))
     terraform_readme = _read("README.md")
 
-    assert deploy_tfvars["enable_lambda_nat_egress"] is False
-    assert deploy_tfvars["lambda_nat_public_subnet_id"] == ""
-    assert deploy_tfvars["lambda_nat_route_subnet_ids"] == []
+    assert deploy_tfvars["enable_lambda_nat_egress"] is True
+    assert deploy_tfvars["lambda_nat_public_subnet_id"]
+    assert deploy_tfvars["lambda_nat_public_subnet_id"] not in deploy_tfvars["lambda_nat_route_subnet_ids"]
+    assert deploy_tfvars["lambda_nat_route_subnet_ids"] == deploy_tfvars["lambda_subnet_ids"]
     assert deploy_tfvars["enable_ingestion_scheduler"] is False
     assert deploy_tfvars["ingestion_schedule_jobs"] == []
-    assert "For PR #161" in terraform_readme
-    assert "NAT egress and EventBridge Scheduler stay intentionally" in terraform_readme
-    assert "Track live ingestion" in terraform_readme
-    assert "cost approval" in terraform_readme
-    assert "runbook smoke evidence through #163" in terraform_readme
+    assert "live ingestion smoke window" in terraform_readme
+    assert "NAT egress is enabled" in terraform_readme
+    assert "scheduler stays disabled" in terraform_readme
+    assert "turn NAT egress" in terraform_readme
+    assert "off again before pausing" in terraform_readme
 
 
 def test_agentcore_runtime_module_uses_cloudformation_resources() -> None:

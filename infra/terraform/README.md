@@ -95,15 +95,16 @@ Environment variables required by `.github/workflows/backend-dev-deploy.yml`.
    are stored in Secrets Manager and the target ticker/job list is reviewed.
    Keep `enable_lambda_nat_egress = false` until live provider ingestion is
    approved because NAT Gateway creates hourly and data processing charges.
-   For PR #161, both NAT egress and EventBridge Scheduler stay intentionally
-   disabled for the low-cost dev account bootstrap. Track live ingestion
-   enablement, cost approval, and runbook smoke evidence through #163 before
-   changing either toggle.
-   The committed dev `deploy.auto.tfvars.json` follows this low-cost,
-   local-only bootstrap posture: Amplify is disabled and Cognito/CORS entries
-   include only localhost and loopback development origins. If a hosted dev FE
-   URL must be restored, track the callback, logout, and CORS change through
-   #162 before relying on that hosted login flow.
+   During the live ingestion smoke window, NAT egress is enabled for the Lambda
+   private subnets so `check_provider_egress` and one-ticker provider ingestion
+   can be verified from the deployed runtime. The scheduler stays disabled
+   until credential, egress, raw archive, DLQ, and manual ingestion evidence is
+   recorded in a reviewed PR. After smoke evidence is collected, turn NAT egress
+   off again before pausing the dev environment.
+   The committed dev `deploy.auto.tfvars.json` still keeps Amplify disabled and
+   Cognito/CORS entries limited to localhost and loopback development origins.
+   If a hosted dev FE URL must be restored, track the callback, logout, and CORS
+   change through #162 before relying on that hosted login flow.
 
 4. If deploying Amplify through Terraform, install the AWS Amplify GitHub App for
    the target region/account and provide a GitHub personal access token through
