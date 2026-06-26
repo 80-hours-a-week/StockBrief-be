@@ -43,6 +43,24 @@ candidate and price history volume.
 5. Attach the result to the related PR or issue before closing the performance
    follow-up.
 
+The repository includes a helper that builds the current SQLAlchemy candidate
+queries instead of copying SQL by hand. By default it does not connect to a
+database and only prints the PostgreSQL `EXPLAIN` statements:
+
+```bash
+.venv/bin/python scripts/check_candidate_query_perf.py
+```
+
+To run the actual PostgreSQL plans, configure the same `DATABASE_URL` or
+`DATABASE_SECRET_ARN` settings used by the backend and pass `--execute`. The
+JSON output intentionally omits database URLs and secret values.
+
+```bash
+.venv/bin/python scripts/check_candidate_query_perf.py \
+  --execute \
+  --output /tmp/stockbrief-candidate-query-perf.json
+```
+
 Recommended query groups:
 
 ```sql
