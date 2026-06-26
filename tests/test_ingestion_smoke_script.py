@@ -35,6 +35,32 @@ class FakeLambdaClient:
         }
 
 
+class MalformedPayloadLambdaClient:
+    def invoke(self, **kwargs):
+        return {
+            "StatusCode": 200,
+            "Payload": io.BytesIO(b"not-json"),
+        }
+
+
+def test_ingestion_smoke_main_exits_nonzero_when_result_is_not_ok(monkeypatch) -> None:
+    def fake_run_smoke(**kwargs):
+        return {
+            "ok": False,
+            "ready_for_manual_ingestion": True,
+            "operations": {
+                "ingest_OpenDART": {
+                    "ok": False,
+                    "error_code": "operation_not_ready",
+                }
+            },
+        }
+
+    monkeypatch.setattr(smoke, "run_smoke", fake_run_smoke)
+
+    assert smoke.main(["--run-provider-ingest", "--source-date", "2026-06-26"]) == 1
+
+
 def test_ingestion_smoke_reports_readiness_without_exposing_secret_fields() -> None:
     client = FakeLambdaClient(
         {
@@ -123,6 +149,40 @@ def test_ingestion_smoke_uses_selected_providers_and_tickers() -> None:
     } in payloads
 
 
+def test_ingestion_smoke_provider_ingest_failure_blocks_overall_ok() -> None:
+    client = FakeLambdaClient(
+        {
+            "check_ingestion_readiness": {"ok": True},
+            "check_raw_archive_write": {"ok": True},
+            "check_provider_egress": {"ok": True},
+            "get_ingestion_status": {"ok": True},
+            "check_ingestion_scheduler_enable_gate": {"ok": True},
+            "ingest_provider_batch": {
+                "ok": False,
+                "issues": [{"code": "provider_ingest_failed"}],
+            },
+        }
+    )
+
+    result = smoke.run_smoke(
+        function_name="stockbrief-dev-api",
+        region="ap-northeast-2",
+        providers=("OpenDART",),
+        tickers=("005930",),
+        status_limit=5,
+        timeout_seconds=1,
+        source_date="2026-06-26",
+        run_provider_ingest=True,
+        client=client,
+    )
+
+    assert result["ready_for_manual_ingestion"] is True
+    assert result["ok"] is False
+    assert {"operation": "ingest_OpenDART", "code": "provider_ingest_failed"} in result[
+        "blockers"
+    ]
+
+
 def test_ingestion_smoke_requires_source_date_before_provider_ingest() -> None:
     result = smoke.run_smoke(
         function_name="stockbrief-dev-api",
@@ -137,3 +197,17 @@ def test_ingestion_smoke_requires_source_date_before_provider_ingest() -> None:
     assert result["ok"] is False
     assert result["ready_for_manual_ingestion"] is False
     assert result["blockers"] == [{"code": "missing_source_date"}]
+
+
+def test_invoke_operation_reports_invalid_lambda_payload() -> None:
+    result = smoke.invoke_operation(
+        MalformedPayloadLambdaClient(),
+        "stockbrief-dev-api",
+        {"stockbrief_operation": "check_ingestion_readiness"},
+    )
+
+    assert result.ok is False
+    assert result.operation == "check_ingestion_readiness"
+    assert result.status_code == 200
+    assert result.payload == {}
+    assert result.error_code == "invalid_lambda_payload"

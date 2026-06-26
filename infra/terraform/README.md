@@ -96,6 +96,8 @@ Environment variables required by `.github/workflows/backend-dev-deploy.yml`.
    stored in Secrets Manager and the target ticker/job list is reviewed. The
    current dev profile keeps the reviewed OpenDART and NAVER schedules for
    `005930`; do not remove those schedules in an unrelated NAT or networking PR.
+   That scheduler setting is current-state preservation, not part of the NAT
+   smoke rollback scope tracked in #192.
    Keep `enable_lambda_nat_egress = false` until live provider ingestion is
    approved because NAT Gateway creates hourly and data processing charges.
    During the live ingestion smoke window, NAT egress is enabled for the Lambda
@@ -523,6 +525,9 @@ complete and recorded in the PR body:
   `ingestion_schedule_jobs` for more than one provider; the legacy
   `ingestion_schedule_provider` and `ingestion_schedule_tickers` variables are
   used only when `ingestion_schedule_jobs` is empty.
+  If the dev tfvars already contain reviewed scheduler jobs, keep those jobs as
+  current-state preservation. Do not fold scheduler disablement into the NAT rollback
+  unless a separate reviewer-approved scheduler change says so.
 
 If any check fails, keep the scheduler disabled and run ingestion manually until
 the missing credential, network egress, or provider behavior is fixed.

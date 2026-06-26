@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         run_provider_ingest=args.run_provider_ingest,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["ready_for_manual_ingestion"] else 1
+    return 0 if result["ok"] else 1
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -214,7 +214,6 @@ def invoke_operation(
             InvocationType="RequestResponse",
             Payload=json.dumps(payload).encode("utf-8"),
         )
-        parsed_payload = parse_lambda_payload(response.get("Payload"))
         status_code = response.get("StatusCode")
         function_error = response.get("FunctionError")
     except (BotoCoreError, ClientError) as exc:
@@ -224,6 +223,18 @@ def invoke_operation(
             status_code=None,
             payload={},
             error_code=type(exc).__name__,
+            error_message=str(exc),
+        )
+
+    try:
+        parsed_payload = parse_lambda_payload(response.get("Payload"))
+    except (TypeError, ValueError, UnicodeDecodeError) as exc:
+        return OperationResult(
+            ok=False,
+            operation=operation,
+            status_code=status_code if isinstance(status_code, int) else None,
+            payload={},
+            error_code="invalid_lambda_payload",
             error_message=str(exc),
         )
 

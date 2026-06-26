@@ -32,6 +32,9 @@ payloads into PR comments, shared logs, or issue comments.
 - `enable_ingestion_scheduler` matches the reviewed dev tfvars. If schedules
   already exist, keep them out of unrelated NAT or networking changes unless a
   reviewer explicitly approves disabling scheduled ingestion.
+  Existing reviewed scheduler jobs are current-state preservation; #192 NAT
+  smoke rollback should turn off NAT egress only and must not silently remove
+  those jobs.
 - External API credentials are stored in Secrets Manager outside git. Use the
   repository helper so the secret payload is written to a temporary file and
   removed automatically:
@@ -396,6 +399,8 @@ Do not enable EventBridge Scheduler until all conditions are true:
 - The reviewed dev scheduler job list is explicit. For the first scheduled
   rollout, use `OpenDART` and `NAVER_NEWS` for ticker `005930` with the weekday
   18:00 KST expression `cron(0 18 ? * MON-FRI *)`.
+  If those jobs are already present in dev tfvars, treat them as preserved
+  scheduler state rather than part of the NAT rollback scope.
 - Lambda outbound internet egress is confirmed by `check_provider_egress`.
 - The scheduler change is reviewed in a separate PR.
 
