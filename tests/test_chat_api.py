@@ -211,6 +211,72 @@ def test_chat_bedrock_provider_returns_model_answer_with_existing_citations(
     assert fake_client.calls[0]["inferenceConfig"]["maxTokens"] == 700
 
 
+def test_chat_bedrock_provider_retries_once_when_citations_are_missing(
+    seeded_api_client: TestClient,
+    monkeypatch,
+) -> None:
+    class FakeBedrockClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return {
+                    "output": {
+                        "message": {
+                            "content": [
+                                {"text": "삼성전자(005930)는 공개 데이터 기준 검토 대상입니다."}
+                            ]
+                        }
+                    }
+                }
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {
+                                "text": (
+                                    "삼성전자(005930)는 공개 데이터 기준 검토 대상입니다. "
+                                    "[ev_mock_005930_disclosure]"
+                                )
+                            }
+                        ]
+                    }
+                }
+            }
+
+    fake_client = FakeBedrockClient()
+
+    def override_settings() -> Settings:
+        return Settings(
+            chat_provider="bedrock",
+            bedrock_chat_model_id="apac.amazon.nova-micro-v1:0",
+            bedrock_chat_region="ap-northeast-2",
+        )
+
+    monkeypatch.setattr(
+        "app.services.chat.providers.boto3.client",
+        lambda *args, **kwargs: fake_client,
+    )
+    app.dependency_overrides[get_settings] = override_settings
+    try:
+        response = seeded_api_client.post(
+            "/v1/chat",
+            json={"ticker": "005930", "message": "왜 추천됐나요?"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == "bedrock Agent 응답을 반환했습니다."
+    assert len(fake_client.calls) == 2
+    retry_prompt = fake_client.calls[1]["messages"][0]["content"][0]["text"]
+    assert "Previous answer failed citation validation" in retry_prompt
+    assert fake_client.calls[1]["inferenceConfig"]["temperature"] == 0.0
+
+
 def test_chat_bedrock_prompt_only_includes_guard_allowed_evidence() -> None:
     class FakeBedrockClient:
         def __init__(self) -> None:

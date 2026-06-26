@@ -123,6 +123,54 @@ class BedrockChatProvider:
         if baseline.policy_status != "allowed":
             return baseline
 
+        answer = self._request_answer(request=request, baseline=baseline)
+        try:
+            _validate_answer_citations(
+                answer=answer,
+                allowed_evidence_ids=set(baseline.used_evidence_ids),
+            )
+        except ChatProviderUnavailable as exc:
+            _log_bedrock_guard_failure(
+                reason="citation_guard_failed",
+                model_id=self.model_id,
+                region_name=self.region_name,
+                answer=answer,
+                details=str(exc),
+            )
+            answer = self._request_answer(
+                request=request,
+                baseline=baseline,
+                citation_retry=True,
+            )
+            try:
+                _validate_answer_citations(
+                    answer=answer,
+                    allowed_evidence_ids=set(baseline.used_evidence_ids),
+                )
+            except ChatProviderUnavailable as retry_exc:
+                _log_bedrock_guard_failure(
+                    reason="citation_retry_failed",
+                    model_id=self.model_id,
+                    region_name=self.region_name,
+                    answer=answer,
+                    details=str(retry_exc),
+                )
+                raise retry_exc from exc
+
+        return ChatResponse(
+            answer=answer,
+            citations=baseline.citations,
+            policy_status=baseline.policy_status,
+            used_evidence_ids=baseline.used_evidence_ids,
+        )
+
+    def _request_answer(
+        self,
+        *,
+        request: ChatProviderInput,
+        baseline: ChatResponse,
+        citation_retry: bool = False,
+    ) -> str:
         try:
             response = self._client().converse(
                 modelId=self.model_id,
@@ -135,6 +183,7 @@ class BedrockChatProvider:
                                 "text": _user_prompt(
                                     request=request,
                                     baseline=baseline,
+                                    citation_retry=citation_retry,
                                 )
                             }
                         ],
@@ -142,7 +191,7 @@ class BedrockChatProvider:
                 ],
                 inferenceConfig={
                     "maxTokens": self.max_tokens,
-                    "temperature": self.temperature,
+                    "temperature": 0.0 if citation_retry else self.temperature,
                 },
             )
         except (BotoCoreError, ClientError) as exc:
@@ -178,27 +227,7 @@ class BedrockChatProvider:
             raise ChatProviderUnavailable(
                 "Bedrock chat provider returned an unsafe answer."
             )
-        try:
-            _validate_answer_citations(
-                answer=answer,
-                allowed_evidence_ids=set(baseline.used_evidence_ids),
-            )
-        except ChatProviderUnavailable as exc:
-            _log_bedrock_guard_failure(
-                reason="citation_guard_failed",
-                model_id=self.model_id,
-                region_name=self.region_name,
-                answer=answer,
-                details=str(exc),
-            )
-            raise
-
-        return ChatResponse(
-            answer=answer,
-            citations=baseline.citations,
-            policy_status=baseline.policy_status,
-            used_evidence_ids=baseline.used_evidence_ids,
-        )
+        return answer
 
 
 def chat_provider_for(name: str, *, settings: Settings | None = None) -> ChatProvider:
@@ -228,7 +257,12 @@ def _system_prompt() -> str:
     )
 
 
-def _user_prompt(*, request: ChatProviderInput, baseline: ChatResponse) -> str:
+def _user_prompt(
+    *,
+    request: ChatProviderInput,
+    baseline: ChatResponse,
+    citation_retry: bool = False,
+) -> str:
     candidate = request.candidate
     citable_evidence = _citable_evidence(request=request, baseline=baseline)
     allowed_citation_ids = set(_citation_ids(baseline.citations))
@@ -249,26 +283,33 @@ def _user_prompt(*, request: ChatProviderInput, baseline: ChatResponse) -> str:
     ]
     citation_hint = ", ".join(_citation_ids(baseline.citations)) or "none"
 
-    return "\n".join(
-        [
-            f"User question: {request.message}",
-            f"Policy status: {baseline.policy_status}",
-            f"Candidate: {candidate.name}({candidate.ticker}), market={candidate.market}, sector={candidate.sector}",
-            f"Recommendation score: {candidate.recommendation_score}",
-            f"Evidence level/count: {candidate.evidence_level}/{candidate.evidence_count}",
-            f"Risk tags: {', '.join(candidate.risk_tags) or 'none'}",
-            f"Missing data: {candidate.missing_data}",
-            f"Data freshness: {candidate.data_freshness}",
-            "Recommendation reasons:",
-            "\n".join(reason_lines) or "- none",
-            "Evidence:",
-            "\n".join(evidence_lines) or "- none",
-            f"Allowed citation IDs: {citation_hint}",
-            "Draft a concise Korean explanation in 4-7 sentences. "
-            "Focus on evidence-based review points and avoid unsupported conclusions. "
-            "Cite only the allowed citation IDs shown above.",
-        ]
+    lines = [
+        f"User question: {request.message}",
+        f"Policy status: {baseline.policy_status}",
+        f"Candidate: {candidate.name}({candidate.ticker}), market={candidate.market}, sector={candidate.sector}",
+        f"Recommendation score: {candidate.recommendation_score}",
+        f"Evidence level/count: {candidate.evidence_level}/{candidate.evidence_count}",
+        f"Risk tags: {', '.join(candidate.risk_tags) or 'none'}",
+        f"Missing data: {candidate.missing_data}",
+        f"Data freshness: {candidate.data_freshness}",
+        "Recommendation reasons:",
+        "\n".join(reason_lines) or "- none",
+        "Evidence:",
+        "\n".join(evidence_lines) or "- none",
+        f"Allowed citation IDs: {citation_hint}",
+    ]
+    if citation_retry:
+        lines.append(
+            "Previous answer failed citation validation. Rewrite the answer using only exact allowed citation IDs."
+        )
+    lines.append(
+        "Draft a concise Korean explanation in 4-7 sentences. "
+        "Focus on evidence-based review points and avoid unsupported conclusions. "
+        "Every factual sentence must include one or more exact allowed citation IDs in square brackets. "
+        "Do not use [1], source names, titles, or invented IDs as citations. "
+        "Cite only the allowed citation IDs shown above."
     )
+    return "\n".join(lines)
 
 
 def _citable_evidence(
