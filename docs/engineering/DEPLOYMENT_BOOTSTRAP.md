@@ -159,12 +159,20 @@ API Gateway, Cognito, Secrets Manager, and alarms are managed by Terraform.
    legacy `AWS_DEV_DEPLOY_ROLE_ARN` fallback is allowed only for `target_env=dev`.
 5. The workflow packages Lambda, initializes Terraform with
    `backends/<target_env>.hcl`, plans with
-   `envs/<target_env>/deploy.auto.tfvars.json`, and applies the selected stack.
+   `envs/<target_env>/deploy.auto.tfvars.json`, and applies the selected stack
+   for pushes to `main`.
    If those profile files are not committed, the workflow creates them at
    runtime from the selected GitHub Environment variables
    `TF_BACKEND_CONFIG_HCL` and `TFVARS_JSON`.
 6. Update Secrets Manager values outside git when keys or DB connection values
    change.
+
+Manual workflow dispatch defaults to plan-only validation with `apply=false`.
+Use this mode after account handoff, action version updates, deploy role policy
+changes, or tfvars edits to verify OIDC, backend selection, Lambda packaging,
+Terraform init, and Terraform plan without changing AWS resources. Re-run with
+`apply=true` only after reviewing the plan and confirming the selected
+`target_env` points at the intended dev account.
 
 Because `backend-dev-deploy` uses the selected GitHub Environment, the OIDC
 trust policy uses this subject pattern:

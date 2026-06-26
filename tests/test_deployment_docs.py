@@ -97,6 +97,11 @@ def test_backend_dev_deploy_checks_assumed_account_matches_backend() -> None:
 
     assert "Verify deploy account matches Terraform backend" in workflow
     assert "target_env:" in workflow
+    assert "apply:" in workflow
+    assert "default: false" in workflow
+    assert "github.event_name == 'push' || inputs.apply == true" in workflow
+    assert "Skip Terraform apply" in workflow
+    assert "Plan-only validation completed" in workflow
     assert 'TARGET_ENV: ${{ github.event.inputs.target_env || \'dev\' }}' in workflow
     assert "backends/{target_env}.hcl" in workflow
     assert "envs/{target_env}/deploy.auto.tfvars.json" in workflow
@@ -106,6 +111,8 @@ def test_backend_dev_deploy_checks_assumed_account_matches_backend() -> None:
     assert "cannot accidentally deploy against a backend that" in deployment_doc
     assert "During account transition work, this failure is the expected guardrail" in deployment_doc
     assert "not as a deployment regression" in deployment_doc
+    assert "Manual workflow dispatch defaults to plan-only validation" in deployment_doc
+    assert "`apply=true` only after reviewing the plan" in deployment_doc
 
 
 def test_backend_dev_deploy_supports_target_environment_profiles() -> None:
@@ -130,7 +137,10 @@ def test_backend_dev_deploy_supports_target_environment_profiles() -> None:
     assert 'terraform init' in workflow
     assert '-backend-config="${{ steps.deploy-profile.outputs.tf_backend_config }}"' in workflow
     assert '-var-file="${{ steps.deploy-profile.outputs.tf_var_file }}"' in workflow
+    assert "inputs.apply != true" in workflow
     assert "target_env=dev-junwoo" in bootstrap_doc
+    assert "apply=false" in bootstrap_doc
+    assert "apply=true" in bootstrap_doc
     assert "backends/dev-junwoo.hcl" in bootstrap_doc
     assert "envs/dev-junwoo/deploy.auto.tfvars.json" in bootstrap_doc
     assert "`target_env=dev` 또는" in bootstrap_doc
