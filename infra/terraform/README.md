@@ -557,6 +557,20 @@ Current dev scheduler review evidence for issue #199:
   inserts for the selected disclosure date.
 - Raw archive objects were written with SSE-KMS encryption for both providers.
 - The ingestion DLQ remained empty after the live smoke.
+- `docs/engineering/CLOUD_DEV_PLAN.md` is intentionally excluded from git by
+  `docs/engineering/CLOUD_*_PLAN.md`; this tracked Terraform README is the
+  PR-visible replacement for the #199 cloud plan evidence.
+- 2026-06-26 scheduler reactivation plan evidence for #199/#200:
+  `terraform plan -var-file=envs/dev/deploy.auto.tfvars.json` planned 6 scheduler additions:
+  scheduler IAM role, scheduler invoke policy, two Lambda scheduler
+  permissions, and two EventBridge schedules.
+- NAT Gateway, NAT route table, Lambda route table associations, and the S3
+  Gateway endpoint route table attachment were already present in Terraform
+  state and were not new changes in this scheduler reactivation plan.
+- The full plan also showed existing Amplify, Lambda package hash, Cognito
+  client, and RDS in-place drift. Classify those drift items before apply; do
+  not apply if any drift is unexplained or implies replacement, cost, deletion
+  protection, backup, or networking changes outside this PR.
 
 Reviewed dev scheduler jobs:
 

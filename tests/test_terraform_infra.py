@@ -184,6 +184,10 @@ def test_dev_scheduler_uses_reviewed_nat_egress_after_provider_smoke() -> None:
     assert "Keep it `false`" in ingestion_runbook
     assert "while Lambda provider egress is unavailable" in ingestion_runbook
     assert "check_ingestion_scheduler_enable_gate" in ingestion_runbook
+    assert "scheduler reactivation plan evidence for #199/#200" in terraform_readme
+    assert "planned 6 scheduler additions" in terraform_readme
+    assert "not new changes in this scheduler reactivation plan" in terraform_readme
+    assert "Classify those drift items before apply" in terraform_readme
 
 
 def test_agentcore_runtime_module_uses_cloudformation_resources() -> None:
