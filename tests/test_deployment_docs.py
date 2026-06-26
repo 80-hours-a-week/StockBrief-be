@@ -71,6 +71,22 @@ def test_backend_ci_checks_lambda_packaging_script_on_pr() -> None:
     assert 'test "$first_hash" = "$second_hash"' in workflow
 
 
+def test_bedrock_chat_smoke_runbook_documents_redacted_validation() -> None:
+    terraform_readme = (REPOSITORY_ROOT / "infra/terraform/README.md").read_text(
+        encoding="utf-8"
+    )
+    script = (REPOSITORY_ROOT / "scripts/check_bedrock_chat_smoke.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "scripts/check_bedrock_chat_smoke.py" in terraform_readme
+    assert "--model-id apac.amazon.nova-micro-v1:0" in terraform_readme
+    assert "`answer_sha256_prefix`" in terraform_readme
+    assert "does not print the raw model" in terraform_readme
+    assert "PROHIBITED_MODEL_OUTPUT_TERMS" in script
+    assert "answer_sha256_prefix" in script
+
+
 def test_backend_dev_deploy_checks_assumed_account_matches_backend() -> None:
     workflow = (
         REPOSITORY_ROOT / ".github/workflows/backend-dev-deploy.yml"

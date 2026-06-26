@@ -338,6 +338,19 @@ Expected result:
 
 Do not enable EventBridge Scheduler until all conditions are true:
 
+- Run the combined scheduler gate operation from the deployed Lambda and confirm
+  `scheduler_enable_ready=true`:
+
+  ```bash
+  aws lambda invoke \
+    --function-name stockbrief-dev-api \
+    --payload '{"stockbrief_operation":"check_ingestion_scheduler_enable_gate","providers":["OpenDART","NAVER_NEWS"],"tickers":["005930"],"limit":10}' \
+    --cli-binary-format raw-in-base64-out \
+    /tmp/stockbrief-scheduler-gate-response.json \
+    --profile stockbrief-dev \
+    --region ap-northeast-2
+  ```
+
 - Both OpenDART and NAVER manual smoke runs have completed with understood
   results.
 - Stale `started` ingestion runs have been reviewed with
