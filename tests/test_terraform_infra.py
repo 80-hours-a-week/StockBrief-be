@@ -130,14 +130,15 @@ def test_dev_backend_and_tfvars_track_current_dev_account() -> None:
 def test_dev_deploy_tfvars_tracks_hosted_web_bootstrap() -> None:
     deploy_tfvars = json.loads(_read("envs/dev/deploy.auto.tfvars.json"))
     terraform_readme = _read("README.md")
+    hosted_origin = "https://main.d20hgo2k8atldu.amplifyapp.com"
 
     assert deploy_tfvars["enable_amplify"] is True
-    assert deploy_tfvars["amplify_cognito_redirect_uri"].endswith(".amplifyapp.com/auth/callback")
+    assert deploy_tfvars["amplify_cognito_redirect_uri"] == f"{hosted_origin}/auth/callback"
     assert deploy_tfvars["agentcore_runtime_enabled"] is False
     assert deploy_tfvars["agentcore_runtime_container_uri"] == ""
-    assert "amplifyapp.com" in deploy_tfvars["cors_allowed_origins"]
-    assert any("amplifyapp.com" in url for url in deploy_tfvars["cognito_callback_urls"])
-    assert any("amplifyapp.com" in url for url in deploy_tfvars["cognito_logout_urls"])
+    assert hosted_origin in deploy_tfvars["cors_allowed_origins"].split(",")
+    assert f"{hosted_origin}/auth/callback" in deploy_tfvars["cognito_callback_urls"]
+    assert f"{hosted_origin}/account" in deploy_tfvars["cognito_logout_urls"]
     assert "current dev profile has Amplify enabled" in terraform_readme
     assert "hosted FE callback/logout URLs" in terraform_readme
     assert "Keep `agentcore_runtime_container_uri` empty" in terraform_readme
