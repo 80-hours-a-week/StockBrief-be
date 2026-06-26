@@ -23,6 +23,9 @@ def test_ingestion_operations_runbook_exists_and_covers_manual_smoke() -> None:
     assert "does not send API keys or client secrets" in runbook
     assert "DNS, connection, and timeout failures" in runbook
     assert "aws lambda invoke" in runbook
+    assert "scripts/check_ingestion_smoke.py" in runbook
+    assert "--run-provider-ingest" in runbook
+    assert "It redacts secret-like fields" in runbook
     assert '"stockbrief_operation":"ingest_provider_batch"' in runbook
     assert '"provider":"OpenDART"' in runbook
     assert '"provider":"NAVER_NEWS"' in runbook

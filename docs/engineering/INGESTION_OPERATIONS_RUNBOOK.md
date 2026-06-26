@@ -67,6 +67,20 @@ payloads into PR comments, shared logs, or issue comments.
   `401`, `403`, or provider validation errors still prove network reachability.
   DNS, connection, and timeout failures mean provider egress is not ready. An
   S3 Gateway endpoint only covers raw archive writes to S3.
+- For repeated checks, use the redacted smoke helper instead of copying full
+  Lambda responses into shared logs:
+
+  ```bash
+  AWS_PROFILE=stockbrief-dev \
+  .venv/bin/python scripts/check_ingestion_smoke.py \
+    --function-name stockbrief-dev-api \
+    --providers OpenDART NAVER_NEWS \
+    --tickers 005930
+  ```
+
+  The helper runs readiness, raw archive write, provider egress, ingestion
+  status, and scheduler gate checks. It redacts secret-like fields and prints
+  only the status fields needed for PR evidence.
 - RDS is available and the latest migration has run:
 
   ```bash
@@ -107,6 +121,19 @@ aws lambda invoke \
   /tmp/stockbrief-naver-ingest-response.json \
   --profile stockbrief-dev \
   --region ap-northeast-2
+```
+
+When credentials and egress are ready, the same helper can run one manual
+provider ingest per selected provider:
+
+```bash
+AWS_PROFILE=stockbrief-dev \
+.venv/bin/python scripts/check_ingestion_smoke.py \
+  --function-name stockbrief-dev-api \
+  --providers OpenDART NAVER_NEWS \
+  --tickers 005930 \
+  --source-date YYYY-MM-DD \
+  --run-provider-ingest
 ```
 
 Expected result:
