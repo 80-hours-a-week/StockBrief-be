@@ -277,6 +277,58 @@ def test_chat_bedrock_provider_retries_once_when_citations_are_missing(
     assert fake_client.calls[1]["inferenceConfig"]["temperature"] == 0.0
 
 
+def test_chat_bedrock_provider_fails_closed_when_retry_still_lacks_citations(
+    seeded_api_client: TestClient,
+    monkeypatch,
+    caplog,
+) -> None:
+    class FakeBedrockClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {"text": "삼성전자(005930)는 공개 데이터 기준 검토 대상입니다."}
+                        ]
+                    }
+                }
+            }
+
+    fake_client = FakeBedrockClient()
+
+    def override_settings() -> Settings:
+        return Settings(
+            chat_provider="bedrock",
+            bedrock_chat_model_id="apac.amazon.nova-micro-v1:0",
+            bedrock_chat_region="ap-northeast-2",
+        )
+
+    monkeypatch.setattr(
+        "app.services.chat.providers.boto3.client",
+        lambda *args, **kwargs: fake_client,
+    )
+    app.dependency_overrides[get_settings] = override_settings
+    caplog.set_level(logging.WARNING, logger="app.services.chat.providers")
+    try:
+        response = seeded_api_client.post(
+            "/v1/chat",
+            json={"ticker": "005930", "message": "왜 추천됐나요?"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error"]["code"] == "CHAT_PROVIDER_UNAVAILABLE"
+    assert "without evidence citations" in payload["error"]["message"]
+    assert len(fake_client.calls) == 2
+    assert "reason=citation_retry_failed" in caplog.text
+
+
 def test_chat_bedrock_prompt_only_includes_guard_allowed_evidence() -> None:
     class FakeBedrockClient:
         def __init__(self) -> None:
@@ -515,6 +567,61 @@ def test_chat_bedrock_provider_rejects_invented_citation_without_allowed_evidenc
         assert "unsupported evidence citations" in str(exc)
     else:
         raise AssertionError("invented citations must fail closed")
+
+
+def test_chat_bedrock_provider_fails_closed_without_allowed_evidence_ids() -> None:
+    class FakeBedrockClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {"text": "삼성전자(005930)는 공개 데이터 기준 검토 대상입니다."}
+                        ]
+                    }
+                }
+            }
+
+    fake_client = FakeBedrockClient()
+    provider = BedrockChatProvider(
+        model_id="apac.amazon.nova-micro-v1:0",
+        region_name="ap-northeast-2",
+        client=fake_client,
+    )
+    candidate = RecommendationCandidateResponse(
+        ticker="005930",
+        name="삼성전자",
+        market="KOSPI",
+        sector="반도체",
+        recommendation_score=51.0,
+        score_components=[],
+        recommendation_reasons=[],
+        risk_tags=["근거 확인 필요"],
+        evidence_level="weak",
+        evidence_count=0,
+        missing_data=["evidence"],
+        data_freshness={},
+        disclaimer="이 정보는 투자 조언이 아닙니다.",
+    )
+
+    try:
+        provider.compose(
+            ChatProviderInput(
+                message="왜 추천됐나요?",
+                candidate=candidate,
+                evidence=[],
+            )
+        )
+    except ChatProviderUnavailable as exc:
+        assert "requires allowed evidence citations" in str(exc)
+    else:
+        raise AssertionError("Bedrock provider must fail closed without allowed evidence IDs")
+
+    assert len(fake_client.calls) == 2
 
 
 def test_chat_bedrock_provider_requires_model_citation_when_evidence_exists(

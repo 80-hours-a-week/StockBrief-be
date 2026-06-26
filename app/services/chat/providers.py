@@ -404,7 +404,9 @@ def _validate_answer_citations(
             "Bedrock chat provider returned unsupported evidence citations."
         )
     if not allowed_evidence_ids:
-        return
+        raise ChatProviderUnavailable(
+            "Bedrock chat provider requires allowed evidence citations."
+        )
 
     if not cited_evidence_ids:
         raise ChatProviderUnavailable(
