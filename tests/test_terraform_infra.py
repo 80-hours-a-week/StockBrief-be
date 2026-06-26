@@ -152,14 +152,13 @@ def test_dev_account_transition_requires_backend_deploy_result_on_issue_52() -> 
     assert "record the success or expected guard failure on #52" in terraform_readme
 
 
-def test_dev_live_ingestion_smoke_preserves_reviewed_scheduler_jobs() -> None:
+def test_dev_post_smoke_nat_rollback_preserves_reviewed_scheduler_jobs() -> None:
     deploy_tfvars = json.loads(_read("envs/dev/deploy.auto.tfvars.json"))
     terraform_readme = _read("README.md")
 
-    assert deploy_tfvars["enable_lambda_nat_egress"] is True
-    assert deploy_tfvars["lambda_nat_public_subnet_id"]
-    assert deploy_tfvars["lambda_nat_public_subnet_id"] not in deploy_tfvars["lambda_nat_route_subnet_ids"]
-    assert deploy_tfvars["lambda_nat_route_subnet_ids"] == deploy_tfvars["lambda_subnet_ids"]
+    assert deploy_tfvars["enable_lambda_nat_egress"] is False
+    assert deploy_tfvars["lambda_nat_public_subnet_id"] == ""
+    assert deploy_tfvars["lambda_nat_route_subnet_ids"] == []
     assert deploy_tfvars["enable_ingestion_scheduler"] is True
     assert {
         job["provider"] for job in deploy_tfvars["ingestion_schedule_jobs"]
@@ -168,6 +167,7 @@ def test_dev_live_ingestion_smoke_preserves_reviewed_scheduler_jobs() -> None:
     assert "live ingestion smoke window" in terraform_readme
     assert "NAT egress is enabled" in terraform_readme
     assert "do not remove those schedules" in terraform_readme
+    assert "smoke rollback scope tracked in #192" in terraform_readme
     assert "turn NAT egress" in terraform_readme
     assert "off again before pausing" in terraform_readme
 
