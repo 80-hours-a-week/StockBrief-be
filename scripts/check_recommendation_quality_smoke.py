@@ -266,7 +266,8 @@ def check_stock_evidence(
         return failed_http_check("stock_evidence", path, response)
 
     data = payload.get("data", {})
-    items = data.get("items", []) if isinstance(data, dict) else []
+    raw_items = data.get("items", []) if isinstance(data, dict) else []
+    items = raw_items if isinstance(raw_items, list) else []
     blockers: list[dict[str, Any]] = []
     if len(items) < min_evidence_count:
         blockers.append(
@@ -278,22 +279,40 @@ def check_stock_evidence(
         )
 
     source_types: set[str] = set()
+    items_with_source_type = 0
+    items_with_source_name = 0
     items_with_url = 0
     items_with_published_at = 0
-    for item in items if isinstance(items, list) else []:
+    required_source_fields = ("source_type", "source_name", "url", "published_at")
+    for index, item in enumerate(items):
         if not isinstance(item, dict):
+            blockers.append({"code": "evidence_item_not_object", "item_index": index})
             continue
+
         if item.get("source_type"):
             source_types.add(str(item["source_type"]))
+            items_with_source_type += 1
+        if item.get("source_name"):
+            items_with_source_name += 1
         if item.get("url"):
             items_with_url += 1
         if item.get("published_at"):
             items_with_published_at += 1
 
-    if items and items_with_url == 0:
-        blockers.append({"code": "evidence_missing_source_url"})
-    if items and items_with_published_at == 0:
-        blockers.append({"code": "evidence_missing_published_at"})
+        missing_fields = [
+            field
+            for field in required_source_fields
+            if not item.get(field)
+        ]
+        if missing_fields:
+            blockers.append(
+                {
+                    "code": "evidence_item_missing_source_metadata",
+                    "item_index": index,
+                    "evidence_id": item.get("id"),
+                    "missing_fields": missing_fields,
+                }
+            )
 
     return CheckResult(
         ok=not blockers,
@@ -302,8 +321,10 @@ def check_stock_evidence(
         status_code=response.status_code,
         summary={
             "ticker": data.get("ticker") if isinstance(data, dict) else ticker,
-            "evidence_count": len(items) if isinstance(items, list) else 0,
+            "evidence_count": len(items),
             "source_types": sorted(source_types),
+            "items_with_source_type": items_with_source_type,
+            "items_with_source_name": items_with_source_name,
             "items_with_url": items_with_url,
             "items_with_published_at": items_with_published_at,
         },

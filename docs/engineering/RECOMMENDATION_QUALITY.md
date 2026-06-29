@@ -57,8 +57,8 @@ full news text, user tokens, or private account data.
 | `missing_data_freshness_as_of` | Detail has no basis date. | Check score freshness fields. |
 | `missing_recommendation_reasons` | Detail cannot explain why the candidate appears. | Check reason generation and evidence linkage. |
 | `evidence_items_below_minimum` | Evidence tab has too few records. | Check `/v1/stocks/{ticker}/evidence`. |
-| `evidence_missing_source_url` | Evidence lacks inspectable source URLs. | Check source document normalization. |
-| `evidence_missing_published_at` | Evidence lacks published timestamps. | Check provider date parsing. |
+| `evidence_item_not_object` | Evidence response contains a malformed item. | Check API response serialization. |
+| `evidence_item_missing_source_metadata` | A specific evidence item lacks `source_type`, `source_name`, `url`, or `published_at`. | Check source document normalization and provider date parsing. |
 
 ## Release Note Template
 

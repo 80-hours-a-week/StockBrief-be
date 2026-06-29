@@ -19,8 +19,14 @@ spec.loader.exec_module(smoke)
 
 
 class FakeFetcher:
-    def __init__(self, *, weak_detail: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        weak_detail: bool = False,
+        missing_evidence_source_metadata: bool = False,
+    ) -> None:
         self.weak_detail = weak_detail
+        self.missing_evidence_source_metadata = missing_evidence_source_metadata
         self.calls: list[tuple[str, float]] = []
 
     def __call__(self, url: str, timeout_seconds: float):
@@ -70,6 +76,22 @@ class FakeFetcher:
                 ).encode("utf-8"),
             )
         if url.endswith("/stocks/005930/evidence"):
+            second_item = {
+                "id": "ev_2",
+                "source_type": "DISCLOSURE",
+                "source_name": "OpenDART",
+                "url": "https://provider.example/disclosure/private-title",
+                "published_at": "2026-06-26T03:40:00Z",
+                "title": "두 번째 원문 제목",
+                "snippet": "두 번째 원문 요약",
+            }
+            if self.missing_evidence_source_metadata:
+                second_item = {
+                    "id": "ev_2",
+                    "source_type": "",
+                    "title": "두 번째 원문 제목",
+                    "snippet": "두 번째 원문 요약",
+                }
             return smoke.HttpResponse(
                 status_code=200,
                 body=json.dumps(
@@ -87,15 +109,7 @@ class FakeFetcher:
                                     "title": "원문 제목은 smoke 결과에 남기지 않습니다.",
                                     "snippet": "원문 요약도 smoke 결과에 남기지 않습니다.",
                                 },
-                                {
-                                    "id": "ev_2",
-                                    "source_type": "DISCLOSURE",
-                                    "source_name": "OpenDART",
-                                    "url": "https://provider.example/disclosure/private-title",
-                                    "published_at": "2026-06-26T03:40:00Z",
-                                    "title": "두 번째 원문 제목",
-                                    "snippet": "두 번째 원문 요약",
-                                },
+                                second_item,
                             ],
                         },
                     }
@@ -128,6 +142,8 @@ def test_recommendation_quality_smoke_passes_with_list_detail_and_evidence() -> 
         "ticker": "005930",
         "evidence_count": 2,
         "source_types": ["DISCLOSURE", "NEWS"],
+        "items_with_source_type": 2,
+        "items_with_source_name": 2,
         "items_with_url": 2,
         "items_with_published_at": 2,
     }
@@ -155,6 +171,35 @@ def test_recommendation_quality_smoke_reports_structured_blockers() -> None:
         "evidence_count": 1,
         "min_evidence_count": 2,
     } in result["blockers"]
+
+
+def test_recommendation_quality_smoke_fails_when_evidence_source_metadata_is_partial() -> None:
+    result = smoke.run_smoke(
+        api_base_url="https://api.example.com/v1",
+        ticker="005930",
+        limit=3,
+        min_evidence_count=2,
+        timeout_seconds=2,
+        fetch=FakeFetcher(missing_evidence_source_metadata=True),
+    )
+
+    assert result["ok"] is False
+    assert {
+        "check": "stock_evidence",
+        "code": "evidence_item_missing_source_metadata",
+        "item_index": 1,
+        "evidence_id": "ev_2",
+        "missing_fields": ["source_type", "source_name", "url", "published_at"],
+    } in result["blockers"]
+    assert result["checks"]["stock_evidence"]["summary"] == {
+        "ticker": "005930",
+        "evidence_count": 2,
+        "source_types": ["NEWS"],
+        "items_with_source_type": 1,
+        "items_with_source_name": 1,
+        "items_with_url": 1,
+        "items_with_published_at": 1,
+    }
 
 
 def test_recommendation_quality_smoke_does_not_print_raw_provider_text() -> None:
