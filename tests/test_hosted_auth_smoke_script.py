@@ -30,6 +30,7 @@ class FakeFetcher:
                 body=json.dumps(
                     {
                         "data": {
+                            "cognito_sub": "user-sub",
                             "email": "user@example.com",
                             "email_verified": True,
                             "nickname": "새별",
@@ -126,6 +127,75 @@ def test_hosted_auth_smoke_redacts_token_email_and_raw_response(monkeypatch) -> 
     assert result["checks"]["auth_api:/v1/me/chat-sessions"]["summary"] == {"count": 2}
     auth_headers = [headers for _, headers, _ in fetcher.calls[3:]]
     assert all(headers.get("Authorization") == "Bearer secret-token" for headers in auth_headers)
+
+
+def test_hosted_auth_smoke_accepts_top_level_protected_api_responses(monkeypatch) -> None:
+    monkeypatch.setenv("STOCKBRIEF_AUTH_BEARER_TOKEN", "secret-token")
+
+    def fetch(url: str, headers: dict[str, str], timeout_seconds: float):
+        if url.endswith("/me"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps(
+                    {
+                        "cognito_sub": "user-sub",
+                        "email": "user@example.com",
+                        "email_verified": True,
+                        "nickname": "새별",
+                    }
+                ).encode("utf-8"),
+            )
+        if url.endswith("/me/preferences"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps({"preferences": {"risk_profile": "balanced"}}).encode("utf-8"),
+            )
+        if url.endswith("/me/watchlist"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps(
+                    {
+                        "count": 1,
+                        "items": [
+                            {
+                                "ticker": "005930",
+                                "name": "삼성전자",
+                                "memo": "비공개 관심종목 메모",
+                            }
+                        ],
+                    }
+                ).encode("utf-8"),
+            )
+        if url.endswith("/me/chat-sessions"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps({"count": 0, "items": []}).encode("utf-8"),
+            )
+        return smoke.HttpResponse(status_code=200, body=b"<html>ok</html>")
+
+    result = smoke.run_smoke(
+        hosted_url="https://main.example.amplifyapp.com",
+        api_base_url="https://api.example.com",
+        fetch=fetch,
+    )
+
+    serialized = json.dumps(result, ensure_ascii=False)
+    assert result["ok"] is True
+    assert "secret-token" not in serialized
+    assert "user@example.com" not in serialized
+    assert "005930" not in serialized
+    assert "삼성전자" not in serialized
+    assert result["checks"]["auth_api:/v1/me"]["summary"] == {
+        "authenticated": True,
+        "email_present": True,
+        "email_verified": True,
+        "nickname_present": True,
+    }
+    assert result["checks"]["auth_api:/v1/me/preferences"]["summary"] == {
+        "preference_keys": ["risk_profile"]
+    }
+    assert result["checks"]["auth_api:/v1/me/watchlist"]["summary"] == {"item_count": 1}
+    assert result["checks"]["auth_api:/v1/me/chat-sessions"]["summary"] == {"count": 0}
 
 
 def test_hosted_auth_smoke_can_run_pages_only_without_token(monkeypatch) -> None:

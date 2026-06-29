@@ -189,13 +189,14 @@ def check_auth_api_endpoint(
         timeout_seconds,
     )
     body = parse_json_body(response.body)
-    ok = response.error_code is None and response.status_code == 200 and bool(body.get("data"))
+    summary = summarize_api_response(path, body)
+    ok = response.error_code is None and response.status_code == 200 and summary.get("response_shape") != "unknown"
     return CheckResult(
         ok=ok,
         name=f"auth_api:{path}",
         target=path,
         status_code=response.status_code,
-        summary=summarize_api_response(path, body),
+        summary=summary,
         error_code=response.error_code or extract_error_code(body),
         error_message=response.error_message,
     )
@@ -255,10 +256,14 @@ def parse_json_body(body: bytes) -> dict[str, Any]:
 
 
 def summarize_api_response(path: str, body: dict[str, Any]) -> dict[str, Any]:
-    data = body.get("data")
+    data = response_payload(body)
     if path == "/v1/me" and isinstance(data, dict):
+        authenticated = (
+            isinstance(data.get("cognito_sub"), str)
+            and bool(data.get("cognito_sub"))
+        ) or (isinstance(data.get("sub"), str) and bool(data.get("sub")))
         return {
-            "authenticated": True,
+            "authenticated": authenticated,
             "email_present": isinstance(data.get("email"), str) and bool(data.get("email")),
             "email_verified": data.get("email_verified") is True,
             "nickname_present": isinstance(data.get("nickname"), str) and bool(data.get("nickname")),
@@ -299,6 +304,11 @@ def extract_error_code(body: dict[str, Any]) -> str | None:
     if isinstance(error, dict) and isinstance(error.get("code"), str):
         return error["code"]
     return None
+
+
+def response_payload(body: dict[str, Any]) -> Any:
+    data = body.get("data")
+    return data if isinstance(data, dict) else body
 
 
 def number_or_none(value: object) -> int | None:
