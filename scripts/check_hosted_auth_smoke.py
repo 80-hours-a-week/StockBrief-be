@@ -190,7 +190,11 @@ def check_auth_api_endpoint(
     )
     body = parse_json_body(response.body)
     summary = summarize_api_response(path, body)
-    ok = response.error_code is None and response.status_code == 200 and summary.get("response_shape") != "unknown"
+    ok = (
+        response.error_code is None
+        and response.status_code == 200
+        and summary.get("contract_ok") is True
+    )
     return CheckResult(
         ok=ok,
         name=f"auth_api:{path}",
@@ -263,6 +267,8 @@ def summarize_api_response(path: str, body: dict[str, Any]) -> dict[str, Any]:
             and bool(data.get("cognito_sub"))
         ) or (isinstance(data.get("sub"), str) and bool(data.get("sub")))
         return {
+            "response_shape": "me",
+            "contract_ok": authenticated,
             "authenticated": authenticated,
             "email_present": isinstance(data.get("email"), str) and bool(data.get("email")),
             "email_verified": data.get("email_verified") is True,
@@ -276,12 +282,26 @@ def summarize_api_response(path: str, body: dict[str, Any]) -> dict[str, Any]:
                 for key in preferences
                 if key in {"markets", "notifications", "risk_profile", "sectors"}
             )
-            return {"preference_keys": safe_keys}
+            return {
+                "response_shape": "preferences",
+                "contract_ok": True,
+                "preference_keys": safe_keys,
+            }
     if path == "/v1/me/watchlist" and isinstance(data, dict):
-        return {"item_count": count_from_response(data)}
+        item_count = count_from_response(data)
+        return {
+            "response_shape": "watchlist",
+            "contract_ok": item_count is not None,
+            "item_count": item_count,
+        }
     if path == "/v1/me/chat-sessions" and isinstance(data, dict):
-        return {"count": number_or_none(data.get("count"))}
-    return {"response_shape": "recognized" if isinstance(data, (dict, list)) else "unknown"}
+        count = number_or_none(data.get("count"))
+        return {
+            "response_shape": "chat_sessions",
+            "contract_ok": count is not None,
+            "count": count,
+        }
+    return {"response_shape": "unknown", "contract_ok": False}
 
 
 def collect_blockers(checks: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:

@@ -115,16 +115,28 @@ def test_hosted_auth_smoke_redacts_token_email_and_raw_response(monkeypatch) -> 
     assert "비공개 관심종목 메모" not in serialized
     assert "비공개 대화" not in serialized
     assert result["checks"]["auth_api:/v1/me"]["summary"] == {
+        "response_shape": "me",
+        "contract_ok": True,
         "authenticated": True,
         "email_present": True,
         "email_verified": True,
         "nickname_present": True,
     }
     assert result["checks"]["auth_api:/v1/me/preferences"]["summary"] == {
+        "response_shape": "preferences",
+        "contract_ok": True,
         "preference_keys": ["notifications", "risk_profile"]
     }
-    assert result["checks"]["auth_api:/v1/me/watchlist"]["summary"] == {"item_count": 1}
-    assert result["checks"]["auth_api:/v1/me/chat-sessions"]["summary"] == {"count": 2}
+    assert result["checks"]["auth_api:/v1/me/watchlist"]["summary"] == {
+        "response_shape": "watchlist",
+        "contract_ok": True,
+        "item_count": 1,
+    }
+    assert result["checks"]["auth_api:/v1/me/chat-sessions"]["summary"] == {
+        "response_shape": "chat_sessions",
+        "contract_ok": True,
+        "count": 2,
+    }
     auth_headers = [headers for _, headers, _ in fetcher.calls[3:]]
     assert all(headers.get("Authorization") == "Bearer secret-token" for headers in auth_headers)
 
@@ -185,17 +197,87 @@ def test_hosted_auth_smoke_accepts_top_level_protected_api_responses(monkeypatch
     assert "user@example.com" not in serialized
     assert "005930" not in serialized
     assert "삼성전자" not in serialized
+    assert "비공개 관심종목 메모" not in serialized
+    assert "비공개 대화" not in serialized
     assert result["checks"]["auth_api:/v1/me"]["summary"] == {
+        "response_shape": "me",
+        "contract_ok": True,
         "authenticated": True,
         "email_present": True,
         "email_verified": True,
         "nickname_present": True,
     }
     assert result["checks"]["auth_api:/v1/me/preferences"]["summary"] == {
+        "response_shape": "preferences",
+        "contract_ok": True,
         "preference_keys": ["risk_profile"]
     }
-    assert result["checks"]["auth_api:/v1/me/watchlist"]["summary"] == {"item_count": 1}
-    assert result["checks"]["auth_api:/v1/me/chat-sessions"]["summary"] == {"count": 0}
+    assert result["checks"]["auth_api:/v1/me/watchlist"]["summary"] == {
+        "response_shape": "watchlist",
+        "contract_ok": True,
+        "item_count": 1,
+    }
+    assert result["checks"]["auth_api:/v1/me/chat-sessions"]["summary"] == {
+        "response_shape": "chat_sessions",
+        "contract_ok": True,
+        "count": 0,
+    }
+
+
+def test_hosted_auth_smoke_rejects_unrecognized_success_shapes(monkeypatch) -> None:
+    monkeypatch.setenv("STOCKBRIEF_AUTH_BEARER_TOKEN", "secret-token")
+
+    def fetch(url: str, headers: dict[str, str], timeout_seconds: float):
+        if url.endswith("/me"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps({"email": "user@example.com"}).encode("utf-8"),
+            )
+        if url.endswith("/me/preferences"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps({"arbitrary": {"risk_profile": "balanced"}}).encode("utf-8"),
+            )
+        if url.endswith("/me/watchlist"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps({"items": "not-a-list"}).encode("utf-8"),
+            )
+        if url.endswith("/me/chat-sessions"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps({"count": "0"}).encode("utf-8"),
+            )
+        return smoke.HttpResponse(status_code=200, body=b"<html>ok</html>")
+
+    result = smoke.run_smoke(
+        hosted_url="https://main.example.amplifyapp.com",
+        api_base_url="https://api.example.com",
+        fetch=fetch,
+    )
+
+    assert result["ok"] is False
+    assert result["checks"]["auth_api:/v1/me"]["summary"]["authenticated"] is False
+    assert result["checks"]["auth_api:/v1/me"]["summary"]["contract_ok"] is False
+    assert result["checks"]["auth_api:/v1/me/preferences"]["summary"] == {
+        "response_shape": "unknown",
+        "contract_ok": False,
+    }
+    assert result["checks"]["auth_api:/v1/me/watchlist"]["summary"] == {
+        "response_shape": "watchlist",
+        "contract_ok": False,
+        "item_count": None,
+    }
+    assert result["checks"]["auth_api:/v1/me/chat-sessions"]["summary"] == {
+        "response_shape": "chat_sessions",
+        "contract_ok": False,
+        "count": None,
+    }
+    assert {
+        "check": "auth_api:/v1/me",
+        "status_code": 200,
+        "error_code": "check_failed",
+    } in result["blockers"]
 
 
 def test_hosted_auth_smoke_can_run_pages_only_without_token(monkeypatch) -> None:
