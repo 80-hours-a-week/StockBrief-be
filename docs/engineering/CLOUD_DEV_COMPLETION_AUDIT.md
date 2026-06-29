@@ -216,6 +216,10 @@ Do not apply this plan as-is. Before the next infrastructure apply:
 4. If NAT egress is no longer needed, remove it in a separate reviewed
    cost-control change instead of mixing it into this audit PR.
 
+Track Terraform drift classification and NAT/scheduler cost posture in follow-up
+issue `#214`; this audit PR records the current state and must not apply those
+infrastructure changes.
+
 ## Cost And Resume Decision
 
 Current cost-sensitive state:
@@ -232,7 +236,7 @@ Decision rule:
   enabled and re-check ingestion status plus DLQ after each scheduler window.
 - If no live provider ingestion work remains, open a separate reviewed PR to
   set `enable_lambda_nat_egress=false` and either pause scheduler jobs or record
-  why they should remain enabled.
+  why they should remain enabled. Track that decision in follow-up issue `#214`.
 - Do not delete Terraform-managed resources from the AWS console.
 
 ## Completion Gate For Next Feature Work

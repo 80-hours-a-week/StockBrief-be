@@ -289,6 +289,7 @@ def test_cloud_dev_completion_audit_documents_current_scope_and_smokes() -> None
     assert "enable_lambda_nat_egress=false" in audit_doc
     assert "terraform plan -var-file=envs/dev/deploy.auto.tfvars.json -detailed-exitcode" in audit_doc
     assert "Do not apply this plan as-is" in audit_doc
+    assert "follow-up issue `#214`" in audit_doc
     assert "operational_alarm_email_addresses" in audit_doc
     assert "AgentCore Runtime is disabled" in audit_doc
 
