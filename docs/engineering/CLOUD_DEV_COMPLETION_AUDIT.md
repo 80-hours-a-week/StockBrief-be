@@ -43,7 +43,7 @@ and summarize only status fields.
 | Ingestion ledger and evidence | 완료 | Status snapshot showed `started=0`, `succeeded=10`, `failed=0`, latest evidence count `10`. | Investigate only if future runs show stale `started` rows or failures. |
 | DLQ | 완료 | SQS attributes showed `ApproximateNumberOfMessages=0`, not visible `0`, delayed `0`. | Check after every scheduler or manual ingestion smoke. |
 | NAT cost state | 우리 후속 필요 | The audit found NAT Gateway `nat-0c302c1bf173385d2` available; #214 sets `enable_lambda_nat_egress=false` for the next reviewed apply. | Re-enable only when live provider ingestion work continues. |
-| Terraform no-change plan | 우리 후속 필요 | `terraform plan -detailed-exitcode` exited `2`; do not apply as-is. | Re-run with the same operational alarm email input used by deploy, and with the intended Lambda package artifact, then classify any remaining drift. |
+| Terraform drift classification | 완료 | `scripts/check_dev_terraform_plan.sh` with the reviewed alarm recipient input exited `2` with `0 to add, 5 to change, 0 to destroy`; all five in-place changes are classified below. | Do not apply blindly; use the classified drift as the reviewed baseline before the next deploy PR. |
 | Full hosted auth API smoke | 다른 팀원 담당 이후 재검증 | Page-only hosted smoke passed without `STOCKBRIEF_AUTH_BEARER_TOKEN`. | After FE auth callback work is merged, run full `check_hosted_auth_smoke.py` with a short-lived token and redact output. |
 | FE detail/recommendation display | 다른 팀원 담당 | FE-BE connection implementation is explicitly out of this PR. | Resume product flow validation after that PR merges. |
 
@@ -185,41 +185,47 @@ Evidence captured on 2026-06-29:
 - OpenDART schedule: `ENABLED`, `cron(0 18 ? * MON-FRI *)`
 - NAVER_NEWS schedule: `ENABLED`, `cron(5 18 ? * MON-FRI *)`
 
-## Terraform Drift Finding
+## Terraform Drift Classification
 
-The local dev plan is not currently a no-change plan:
+The local dev plan is not currently a no-change plan, but the current drift is
+classified and does not include create or destroy actions:
+
+```bash
+OPERATIONAL_ALARM_EMAILS_JSON='["REDACTED_OPERATIONAL_EMAIL"]' \
+scripts/check_dev_terraform_plan.sh
+```
+
+The lower-level equivalent command remains:
 
 ```bash
 cd infra/terraform
-AWS_PROFILE=stockbrief-dev \
+export TF_VAR_operational_alarm_email_addresses='["REDACTED_OPERATIONAL_EMAIL"]'
 terraform plan -var-file=envs/dev/deploy.auto.tfvars.json -detailed-exitcode -no-color
 ```
 
 Observed result on 2026-06-29:
 
 - Exit code `2`
-- Plan summary: `0 to add, 12 to change, 2 to destroy`
-- Planned destroy includes the operational alert SNS topic and its email
-  subscription because local `envs/dev/deploy.auto.tfvars.json` does not carry
-  `operational_alarm_email_addresses`.
-- Planned alarm updates remove SNS actions from CloudWatch alarms for the same
-  reason.
-- Planned Lambda update includes a local package hash difference from the
-  currently deployed artifact.
+- Plan summary: `0 to add, 5 to change, 0 to destroy`
+- No NAT Gateway, EventBridge Scheduler, SNS topic, SNS subscription, or alarm
+  action removal is planned.
 
-Do not apply this plan as-is. Before the next infrastructure apply:
+| Plan item | Classification | Action rule |
+| --- | --- | --- |
+| Amplify app in-place update | Accepted provider/computed drift. JSON plan review showed no frontend environment variable change and no repository/callback change. | Accept as reviewed drift unless a future plan shows environment variable or repository changes. |
+| Amplify branch in-place update | Accepted provider/computed drift. Branch identity and build settings remain unchanged. | Accept as reviewed drift unless a future plan shows branch name, framework, stage, or auto-build changes. |
+| Cognito web client in-place update | Accepted provider/computed drift. Callback URLs, logout URLs, OAuth flow, OAuth scopes, explicit auth flows, and identity provider list remain unchanged. | Accept as reviewed drift unless a future plan changes auth URLs, token behavior, scopes, or identity providers. |
+| RDS instance in-place update | Accepted provider/computed drift. Security group, storage, instance class, backup retention, deletion protection, skip final snapshot, public access, and Multi-AZ posture remain unchanged. | Accept as reviewed drift unless a future plan changes cost, deletion, backup, storage, network, or availability posture. |
+| Lambda function in-place update | Expected package artifact drift. The helper rebuilds `dist/stockbrief-api-lambda.zip`, so `source_code_hash` differs from the deployed artifact. | Apply only in a reviewed deploy PR that intentionally ships the current backend package. |
 
-1. Provide the reviewed operational alarm recipient list through the same
-   non-git path used by deploy, or explicitly accept alarm notification removal
-   in a separate reviewed PR.
-2. Build the intended Lambda package artifact with `./scripts/package_api_lambda.sh`.
-3. Re-run the plan and classify every remaining change in the PR body.
-4. If NAT egress is no longer needed, remove it in a separate reviewed
-   cost-control change instead of mixing it into this audit PR.
+Do not apply this plan as-is or as a blind repair step. Before the next
+infrastructure apply, re-run `scripts/check_dev_terraform_plan.sh` with the
+reviewed alarm recipient input and classify any new item that is not listed
+above.
 
 Track Terraform drift classification and NAT/scheduler cost posture in follow-up
-issue `#214`; this audit PR records the current state and must not apply those
-infrastructure changes.
+issue `#214`; this audit PR records the current reviewed baseline and must not
+apply infrastructure changes.
 
 Follow-up decision for #214:
 
