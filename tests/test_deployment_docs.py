@@ -260,6 +260,39 @@ def test_new_aws_bootstrap_documents_manual_amplify_account_switching() -> None:
     assert "Amplify access token이나" in bootstrap_doc
 
 
+def test_cloud_dev_completion_audit_documents_current_scope_and_smokes() -> None:
+    audit_doc = (
+        REPOSITORY_ROOT / "docs/engineering/CLOUD_DEV_COMPLETION_AUDIT.md"
+    ).read_text(encoding="utf-8")
+
+    assert "# Cloud Dev Completion Audit" in audit_doc
+    assert "Linked issue: `#211`" in audit_doc
+    assert "FE-to-BE integration" in audit_doc
+    assert "toolchain migration" in audit_doc
+    assert "다른 팀원" in audit_doc
+    assert "완료" in audit_doc
+    assert "다른 팀원 담당" in audit_doc
+    assert "우리 후속 필요" in audit_doc
+
+    assert "`GET /v1/health`" in audit_doc
+    assert "`GET /v1/recommendations/candidates?limit=3`" in audit_doc
+    assert "`POST /v1/chat`" in audit_doc
+    assert "scripts/check_bedrock_chat_smoke.py" in audit_doc
+    assert "scripts/check_hosted_auth_smoke.py --skip-auth-api" in audit_doc
+    assert "scripts/check_ingestion_smoke.py" in audit_doc
+    assert "matched_terms=[]" in audit_doc
+    assert "ready_for_manual_ingestion=true" in audit_doc
+    assert "scheduler_enable_ready=true" in audit_doc
+    assert "ApproximateNumberOfMessages=0" in audit_doc or "DLQ visible messages: `0`" in audit_doc
+
+    assert "NAT Gateway" in audit_doc
+    assert "enable_lambda_nat_egress=false" in audit_doc
+    assert "terraform plan -var-file=envs/dev/deploy.auto.tfvars.json -detailed-exitcode" in audit_doc
+    assert "Do not apply this plan as-is" in audit_doc
+    assert "operational_alarm_email_addresses" in audit_doc
+    assert "AgentCore Runtime is disabled" in audit_doc
+
+
 def test_deploy_account_guard_accepts_matching_accounts(tmp_path: Path) -> None:
     result = _run_deploy_account_guard(
         tmp_path,
