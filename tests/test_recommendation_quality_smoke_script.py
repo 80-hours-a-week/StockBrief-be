@@ -1,0 +1,170 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_PATH = REPOSITORY_ROOT / "scripts/check_recommendation_quality_smoke.py"
+
+
+spec = importlib.util.spec_from_file_location("check_recommendation_quality_smoke", SCRIPT_PATH)
+assert spec is not None
+smoke = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+sys.modules[spec.name] = smoke
+spec.loader.exec_module(smoke)
+
+
+class FakeFetcher:
+    def __init__(self, *, weak_detail: bool = False) -> None:
+        self.weak_detail = weak_detail
+        self.calls: list[tuple[str, float]] = []
+
+    def __call__(self, url: str, timeout_seconds: float):
+        self.calls.append((url, timeout_seconds))
+        if "/stocks/candidates?" in url:
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps(
+                    {
+                        "success": True,
+                        "data": {
+                            "as_of": "2026-06-09",
+                            "items": [
+                                {
+                                    "ticker": "005930",
+                                    "name": "삼성전자",
+                                    "evidence_summary": {
+                                        "news_count": 2,
+                                        "disclosure_count": 1,
+                                        "latest_at": "2026-06-26T03:48:00Z",
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ).encode("utf-8"),
+            )
+        if url.endswith("/stocks/candidates/005930"):
+            evidence_count = 1 if self.weak_detail else 3
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps(
+                    {
+                        "ticker": "005930",
+                        "evidence_level": "medium",
+                        "evidence_count": evidence_count,
+                        "risk_tags": ["sector_cycle"],
+                        "missing_data": [],
+                        "data_freshness": {"as_of": "2026-06-09"},
+                        "recommendation_reasons": [
+                            {
+                                "reason_id": "rsn_1",
+                                "summary": "공개 데이터 기준 검토 포인트가 확인됩니다.",
+                            }
+                        ],
+                    }
+                ).encode("utf-8"),
+            )
+        if url.endswith("/stocks/005930/evidence"):
+            return smoke.HttpResponse(
+                status_code=200,
+                body=json.dumps(
+                    {
+                        "success": True,
+                        "data": {
+                            "ticker": "005930",
+                            "items": [
+                                {
+                                    "id": "ev_1",
+                                    "source_type": "NEWS",
+                                    "source_name": "NAVER_NEWS",
+                                    "url": "https://provider.example/news/private-title",
+                                    "published_at": "2026-06-26T03:48:00Z",
+                                    "title": "원문 제목은 smoke 결과에 남기지 않습니다.",
+                                    "snippet": "원문 요약도 smoke 결과에 남기지 않습니다.",
+                                },
+                                {
+                                    "id": "ev_2",
+                                    "source_type": "DISCLOSURE",
+                                    "source_name": "OpenDART",
+                                    "url": "https://provider.example/disclosure/private-title",
+                                    "published_at": "2026-06-26T03:40:00Z",
+                                    "title": "두 번째 원문 제목",
+                                    "snippet": "두 번째 원문 요약",
+                                },
+                            ],
+                        },
+                    }
+                ).encode("utf-8"),
+            )
+        return smoke.HttpResponse(status_code=404, body=b"{}")
+
+
+def test_recommendation_quality_smoke_passes_with_list_detail_and_evidence() -> None:
+    fetcher = FakeFetcher()
+
+    result = smoke.run_smoke(
+        api_base_url="https://api.example.com",
+        ticker="",
+        limit=3,
+        min_evidence_count=2,
+        timeout_seconds=2,
+        fetch=fetcher,
+    )
+
+    assert result["ok"] is True
+    assert result["selected_ticker"] == "005930"
+    assert result["checks"]["candidate_list"]["summary"] == {
+        "count": 1,
+        "first_ticker": "005930",
+        "as_of": "2026-06-09",
+    }
+    assert result["checks"]["candidate_detail"]["summary"]["evidence_count"] == 3
+    assert result["checks"]["stock_evidence"]["summary"] == {
+        "ticker": "005930",
+        "evidence_count": 2,
+        "source_types": ["DISCLOSURE", "NEWS"],
+        "items_with_url": 2,
+        "items_with_published_at": 2,
+    }
+    assert [url for url, _ in fetcher.calls] == [
+        "https://api.example.com/v1/stocks/candidates?limit=3",
+        "https://api.example.com/v1/stocks/candidates/005930",
+        "https://api.example.com/v1/stocks/005930/evidence",
+    ]
+
+
+def test_recommendation_quality_smoke_reports_structured_blockers() -> None:
+    result = smoke.run_smoke(
+        api_base_url="https://api.example.com/v1",
+        ticker="005930",
+        limit=3,
+        min_evidence_count=2,
+        timeout_seconds=2,
+        fetch=FakeFetcher(weak_detail=True),
+    )
+
+    assert result["ok"] is False
+    assert {
+        "check": "candidate_detail",
+        "code": "detail_evidence_below_minimum",
+        "evidence_count": 1,
+        "min_evidence_count": 2,
+    } in result["blockers"]
+
+
+def test_recommendation_quality_smoke_does_not_print_raw_provider_text() -> None:
+    result = smoke.run_smoke(
+        api_base_url="https://api.example.com",
+        ticker="005930",
+        fetch=FakeFetcher(),
+    )
+
+    serialized = json.dumps(result, ensure_ascii=False)
+    assert "원문 제목" not in serialized
+    assert "원문 요약" not in serialized
+    assert "provider.example" not in serialized

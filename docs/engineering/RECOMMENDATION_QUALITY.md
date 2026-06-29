@@ -1,0 +1,73 @@
+# Recommendation Quality Criteria
+
+This guide defines the minimum quality bar for a StockBrief recommendation
+candidate. It is an operating checklist, not a trading signal.
+
+Recommendation means `검토 후보 추천`. A candidate can help a user decide what to
+review next, but it must not tell the user to buy, sell, enter a position, set a
+target price, or expect a guaranteed result.
+
+## Quality Bar
+
+A deployed candidate flow is healthy when all checks pass:
+
+| Area | Required Signal | Why It Matters |
+| --- | --- | --- |
+| Candidate list | `/v1/stocks/candidates` returns at least one item. | The FE home and explore views have data to render. |
+| Evidence count | Each listed item has at least two public evidence records. | A candidate should not be shown from a single weak signal. |
+| Freshness | Candidate list items include `evidence_summary.latest_at`; detail includes `data_freshness.as_of`. | Users need to know the data basis. |
+| Detail contract | `/v1/stocks/candidates/{ticker}` includes `evidence_level`, `evidence_count`, `missing_data`, `risk_tags`, and `recommendation_reasons`. | FE detail and AI explanation need the same source of truth. |
+| Risk context | Detail has at least one risk tag. | A candidate without risk context is incomplete. |
+| Evidence source | `/v1/stocks/{ticker}/evidence` returns public evidence with source type, source name, URL, and published timestamp. | Users must be able to inspect the basis. |
+
+If provider egress is paused for cost control, the quality smoke can still pass
+using the latest stored evidence. Live ingestion reactivation is a separate
+operation and requires the ingestion runbook gates.
+
+## Smoke Command
+
+Run this after FE-BE connection changes, ingestion evidence changes, or before
+resuming product-flow work:
+
+```bash
+STOCKBRIEF_API_BASE_URL="https://hazfha7995.execute-api.ap-northeast-2.amazonaws.com" \
+  uv run python scripts/check_recommendation_quality_smoke.py --ticker 005930
+```
+
+The script calls:
+
+- `GET /v1/stocks/candidates`
+- `GET /v1/stocks/candidates/{ticker}`
+- `GET /v1/stocks/{ticker}/evidence`
+
+The output is redacted by design. It reports counts, basis dates, source type
+coverage, and structured blocker codes. It does not print raw provider bodies,
+full news text, user tokens, or private account data.
+
+## Interpreting Failures
+
+| Blocker | Meaning | First Check |
+| --- | --- | --- |
+| `candidate_list_empty` | No candidates are available. | Check seed/live score rows and candidate eligibility. |
+| `candidate_evidence_below_minimum` | A list item has fewer than two evidence records. | Check ingestion status and evidence joins. |
+| `missing_candidate_latest_at` | Candidate summary has no latest evidence timestamp. | Check `evidence_summary` aggregation. |
+| `detail_evidence_below_minimum` | Detail has too little evidence. | Check `recommendation_scores.evidence_count`. |
+| `missing_risk_tags` | Detail has no risk context. | Check `risk_signals` for the ticker. |
+| `missing_data_not_array` | Detail contract no longer returns `missing_data` as an array. | Check API response model and serializer. |
+| `missing_data_freshness_as_of` | Detail has no basis date. | Check score freshness fields. |
+| `missing_recommendation_reasons` | Detail cannot explain why the candidate appears. | Check reason generation and evidence linkage. |
+| `evidence_items_below_minimum` | Evidence tab has too few records. | Check `/v1/stocks/{ticker}/evidence`. |
+| `evidence_missing_source_url` | Evidence lacks inspectable source URLs. | Check source document normalization. |
+| `evidence_missing_published_at` | Evidence lacks published timestamps. | Check provider date parsing. |
+
+## Release Note Template
+
+Use this short summary in PRs or issue comments:
+
+```text
+Recommendation quality smoke:
+- candidate list: pass, count=<n>, first_ticker=<ticker>
+- candidate detail: pass, evidence_level=<level>, evidence_count=<n>, risk_tag_count=<n>
+- stock evidence: pass, evidence_count=<n>, source_types=<types>
+- remaining blockers: none
+```
