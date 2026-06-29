@@ -223,11 +223,10 @@ infrastructure apply, re-run `scripts/check_dev_terraform_plan.sh` with the
 reviewed alarm recipient input and classify any new item that is not listed
 above.
 
-Track Terraform drift classification and NAT/scheduler cost posture in follow-up
-issue `#214`; this audit PR records the current reviewed baseline and must not
-apply infrastructure changes.
+This #221 follow-up records the current reviewed Terraform drift baseline and
+must not apply infrastructure changes.
 
-Follow-up decision for #214:
+NAT/scheduler cost posture decided in #214:
 
 - Use `scripts/check_dev_terraform_plan.sh` with the reviewed operational alarm
   recipient input before every dev apply.
