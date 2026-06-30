@@ -11,6 +11,8 @@ from app.services.recommendation.models import (
     ScoreComponent,
 )
 
+SCORE_VERSION = "factor-rank-2026-06-30"
+
 COMPONENT_WEIGHTS: dict[str, int] = {
     "financial_stability": 20,
     "profitability": 15,
@@ -107,11 +109,14 @@ def calculate_recommendation_score(
     return RecommendationScoreResult(
         ticker=score_input.ticker,
         as_of_date=score_input.as_of_date,
+        score_version=SCORE_VERSION,
         total_score=total_score,
         components=components,
         missing_data=missing_data,
         fallback_data=fallback_data,
+        data_freshness=_data_freshness(score_input),
         risk_penalty=risk_penalty,
+        risk_tags=sorted({risk.risk_tag for risk in score_input.risks}),
         evidence_count=evidence_count,
         evidence_level=_evidence_level(evidence_count, len(missing_data)),
         reasons=_build_reasons(components, score_input.evidence),
@@ -136,6 +141,7 @@ def _component(
         raw_score=None if raw_score is None else _clamp(raw_score, 0, 100),
         weighted_score=weighted_score,
         reason=_component_reason(name, raw_score, used_fallback),
+        rule_version=SCORE_VERSION,
         input_refs=required_keys,
         evidence_ids=_evidence_ids_for(score_input.evidence, name),
         used_fallback=used_fallback,
@@ -286,6 +292,12 @@ def _price_metrics(score_input: RecommendationScoreInput) -> tuple[dict[str, Any
     if score_input.fallback_price_metrics:
         return score_input.fallback_price_metrics, True
     return {}, False
+
+
+def _data_freshness(score_input: RecommendationScoreInput) -> dict[str, Any]:
+    if score_input.data_freshness is not None:
+        return dict(score_input.data_freshness)
+    return {"as_of": score_input.as_of_date.isoformat()}
 
 
 def _ratio_score(value: float, *, weak: float, excellent: float) -> float:
