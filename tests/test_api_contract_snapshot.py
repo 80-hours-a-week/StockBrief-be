@@ -38,6 +38,19 @@ RECOMMENDATION_CANDIDATE_REQUIRED_FIELDS = {
     "disclaimer",
 }
 
+SCORE_COMPONENT_REQUIRED_FIELDS = {
+    "name",
+    "weight",
+    "raw_score",
+    "weighted_score",
+    "reason",
+}
+
+SCORE_COMPONENT_OPTIONAL_FIELDS = {
+    "input_refs",
+    "evidence_ids",
+}
+
 CHAT_RESPONSE_REQUIRED_FIELDS = {
     "success",
     "data",
@@ -74,6 +87,19 @@ def test_recommendation_candidate_schema_required_fields_snapshot(
     assert schema["properties"]["recommendation_score"]["maximum"] == 100
 
 
+def test_recommendation_score_component_schema_fields_snapshot(
+    seeded_api_client: TestClient,
+) -> None:
+    response = seeded_api_client.get("/v1/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()["components"]["schemas"]["ScoreComponentResponse"]
+    assert set(schema["properties"]) >= (
+        SCORE_COMPONENT_REQUIRED_FIELDS | SCORE_COMPONENT_OPTIONAL_FIELDS
+    )
+    assert set(schema["required"]) >= SCORE_COMPONENT_REQUIRED_FIELDS
+
+
 def test_chat_response_schema_required_fields_snapshot(
     seeded_api_client: TestClient,
 ) -> None:
@@ -88,6 +114,12 @@ def test_chat_response_schema_required_fields_snapshot(
     assert set(data_schema["properties"]) >= {
         "session_id",
         "message_id",
+        "answer",
+        "citations",
+        "safety",
+    }
+    assert set(data_schema["required"]) >= {
+        "session_id",
         "answer",
         "citations",
         "safety",
