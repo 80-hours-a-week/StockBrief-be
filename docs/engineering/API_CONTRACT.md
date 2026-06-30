@@ -1,7 +1,7 @@
 # API Contract
 
 This document is the canonical StockBrief public API contract for the
-2026-06-10 sprint backbone.
+`factor-rank-2026-06-30` score contract.
 
 The API serves mock/seed data only in this sprint. OpenDART, NAVER, KRX,
 Bedrock, and RAG ingestion adapters must keep the same response shape when
@@ -93,6 +93,23 @@ compatibility:
 
 New frontend work should prefer the public endpoints in the table above.
 
+Score-backed candidate and score endpoints use stored deterministic scores.
+The frozen score version is `factor-rank-2026-06-30`.
+
+Candidate score contract fields:
+
+- `recommendation_score`: total score from `0` to `100`.
+- `score_components`: exactly 8 component score records when all persisted
+  component data is available. Each component includes `name`, `weight`,
+  `raw_score`, `weighted_score`, `reason`, `input_refs`, and `evidence_ids`.
+- `evidence_count`: distinct evidence item count used by the score.
+- `evidence_level`: `strong`, `medium`, or `weak`.
+- `missing_data`: missing input keys. Present even when empty.
+- `fallback_data`: fallback component names from the score engine contract.
+  Downstream persistence must preserve it when score materialization starts.
+- `data_freshness`: freshness metadata, including `as_of`.
+- `risk_tags`: risk signal tags associated with the same ticker and score date.
+
 ## 4. GET /health
 
 Response:
@@ -175,7 +192,7 @@ Response `data`:
         "total": 78.5,
         "grade": "B",
         "as_of": "2026-06-09",
-        "version": "mock-score-rules-2026-06-09",
+        "version": "factor-rank-2026-06-30",
         "breakdown": {
           "momentum": 7.5,
           "liquidity": 7.8,
@@ -228,7 +245,7 @@ Response `data`:
     "total": 78.5,
     "grade": "B",
     "as_of": "2026-06-09",
-    "version": "mock-score-rules-2026-06-09",
+    "version": "factor-rank-2026-06-30",
     "breakdown": {
       "momentum": 7.5,
       "liquidity": 7.8,
@@ -302,6 +319,9 @@ Response `data`:
 ```
 
 ## 9. POST /chat
+
+Chat providers explain stored scores, evidence, freshness, missing data, and
+risk tags. They must not generate, replace, or modify score values.
 
 Request:
 
@@ -431,4 +451,3 @@ Response:
     }
   ]
 }
-```
