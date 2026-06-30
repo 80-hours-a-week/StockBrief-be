@@ -94,7 +94,9 @@ compatibility:
 New frontend work should prefer the public endpoints in the table above.
 
 Score-backed candidate and score endpoints use stored deterministic scores.
-The frozen score version is `factor-rank-2026-06-30`.
+The current mock seed baseline stores `mock-score-rules-2026-06-09` in public
+`score.version` fields. After score materialization is connected, newly
+materialized scores must store `factor-rank-2026-06-30` in the same field.
 
 Candidate score contract fields:
 
@@ -105,10 +107,17 @@ Candidate score contract fields:
 - `evidence_count`: distinct evidence item count used by the score.
 - `evidence_level`: `strong`, `medium`, or `weak`.
 - `missing_data`: missing input keys. Present even when empty.
-- `fallback_data`: fallback component names from the score engine contract.
-  Downstream persistence must preserve it when score materialization starts.
 - `data_freshness`: freshness metadata, including `as_of`.
 - `risk_tags`: risk signal tags associated with the same ticker and score date.
+
+Future materialized score fields:
+
+- `fallback_data`: fallback component names from the score engine contract.
+  Downstream persistence must preserve it when score materialization starts.
+- Component `rule_version`: the score engine emits this internally, but the
+  current public component response does not expose it.
+- Score result `score_version`: the score engine emits this internally, while
+  the current public API exposes persisted score version as `score.version`.
 
 ## 4. GET /health
 
@@ -192,7 +201,7 @@ Response `data`:
         "total": 78.5,
         "grade": "B",
         "as_of": "2026-06-09",
-        "version": "factor-rank-2026-06-30",
+        "version": "mock-score-rules-2026-06-09",
         "breakdown": {
           "momentum": 7.5,
           "liquidity": 7.8,
@@ -245,7 +254,7 @@ Response `data`:
     "total": 78.5,
     "grade": "B",
     "as_of": "2026-06-09",
-    "version": "factor-rank-2026-06-30",
+    "version": "mock-score-rules-2026-06-09",
     "breakdown": {
       "momentum": 7.5,
       "liquidity": 7.8,

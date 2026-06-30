@@ -8,9 +8,9 @@ The score engine ranks candidates for a 근거 기반 국내 주식 종목 후�
 
 Recommendation means `검토 후보 추천`. Scores are inputs for review, not instructions to trade.
 
-## 2. Output Contract
+## 2. Engine Output Contract
 
-Every score response must include:
+Every engine score result must include:
 
 - `ticker`
 - `as_of`
@@ -23,7 +23,7 @@ Every score response must include:
 - `data_freshness`
 - `risk_tags`
 
-JSON example:
+Engine JSON example:
 
 ```json
 {
@@ -58,6 +58,13 @@ JSON example:
   "risk_tags": []
 }
 ```
+
+Current public candidate and stock score responses expose persisted component
+fields only. They include component `name`, `weight`, `raw_score`,
+`weighted_score`, `reason`, `input_refs`, and `evidence_ids`, but do not expose
+component `rule_version`, `used_fallback`, or score result `fallback_data`.
+Those fields remain part of the engine/materializer contract for downstream
+persistence work.
 
 ## 3. Components And Weights
 
