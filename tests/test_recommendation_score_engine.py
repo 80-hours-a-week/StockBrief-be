@@ -6,6 +6,7 @@ from app.services.recommendation import (
     RiskPenaltyInput,
     calculate_recommendation_score,
 )
+from app.services.recommendation.engine import SCORE_VERSION
 
 
 def _base_input() -> RecommendationScoreInput:
@@ -30,6 +31,11 @@ def _base_input() -> RecommendationScoreInput:
             "trading_value": 120_000_000_000,
             "momentum_20d": 0.08,
             "volatility_20d": 0.21,
+        },
+        data_freshness={
+            "as_of": "2026-06-09",
+            "price_as_of": "2026-06-09",
+            "financials_as_of": "2026-03-31",
         },
         evidence=[
             EvidenceReference(
@@ -81,6 +87,13 @@ def test_score_engine_deterministic_snapshot_for_base_input() -> None:
     result = calculate_recommendation_score(_base_input())
 
     assert result.total_score == 75.5
+    assert result.score_version == SCORE_VERSION
+    assert result.data_freshness == {
+        "as_of": "2026-06-09",
+        "price_as_of": "2026-06-09",
+        "financials_as_of": "2026-03-31",
+    }
+    assert result.risk_tags == ["high_volatility"]
     assert result.evidence_count == 4
     assert result.evidence_level == "strong"
     assert result.risk_penalty == 2.5
@@ -94,6 +107,7 @@ def test_score_engine_deterministic_snapshot_for_base_input() -> None:
         "liquidity",
         "momentum_volatility",
     ]
+    assert {component.rule_version for component in result.components} == {SCORE_VERSION}
     assert [reason.component for reason in result.reasons] == [
         "financial_stability",
         "growth",
@@ -128,6 +142,19 @@ def test_missing_data_is_reported_and_weak_evidence_level_when_inputs_are_sparse
     assert "financial_stability.inputs" in result.missing_data
     assert "growth.inputs" in result.missing_data
     assert "liquidity.inputs" in result.missing_data
+
+
+def test_score_result_uses_as_of_date_as_minimum_freshness_contract() -> None:
+    result = calculate_recommendation_score(
+        RecommendationScoreInput(
+            ticker="000000",
+            as_of_date=date(2026, 6, 9),
+        )
+    )
+
+    assert result.score_version == SCORE_VERSION
+    assert result.data_freshness == {"as_of": "2026-06-09"}
+    assert result.risk_tags == []
 
 
 def test_fallback_price_metrics_are_used_without_marking_price_components_missing() -> None:
