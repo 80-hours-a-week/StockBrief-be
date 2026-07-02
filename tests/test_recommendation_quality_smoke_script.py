@@ -266,31 +266,6 @@ def test_recommendation_quality_smoke_reports_canonical_detail_target_without_se
 
 
 def test_recommendation_quality_smoke_requires_complete_score_components() -> None:
-    class BrokenComponentFetcher(FakeFetcher):
-        def __call__(self, url: str, timeout_seconds: float):
-            if "/recommendations/candidates/005930" not in url:
-                return super().__call__(url, timeout_seconds)
-            return smoke.HttpResponse(
-                status_code=200,
-                body=json.dumps(
-                    {
-                        "ticker": "005930",
-                        "evidence_level": "medium",
-                        "evidence_count": 3,
-                        "score_components": score_components()[:-1],
-                        "risk_tags": ["sector_cycle"],
-                        "missing_data": [],
-                        "data_freshness": {"as_of": "2026-06-09"},
-                        "recommendation_reasons": [
-                            {
-                                "reason_id": "rsn_1",
-                                "summary": "공개 데이터 기준 검토 포인트가 확인됩니다.",
-                            }
-                        ],
-                    }
-                ).encode("utf-8"),
-            )
-
     result = smoke.run_smoke(
         api_base_url="https://api.example.com/v1",
         ticker="005930",
@@ -298,7 +273,7 @@ def test_recommendation_quality_smoke_requires_complete_score_components() -> No
         max_detail_tickers=3,
         min_evidence_count=2,
         timeout_seconds=2,
-        fetch=BrokenComponentFetcher(),
+        fetch=ComponentFetcher(score_components()[:-1]),
     )
 
     assert result["ok"] is False
@@ -313,6 +288,53 @@ def test_recommendation_quality_smoke_requires_complete_score_components() -> No
         "check": "candidate_detail",
         "code": "score_components_missing",
         "components": ["momentum_volatility"],
+    } in result["blockers"]
+
+
+def test_recommendation_quality_smoke_reports_score_component_weight_mismatch() -> None:
+    components = score_components()
+    components[0] = {**components[0], "weight": 21}
+
+    result = smoke.run_smoke(
+        api_base_url="https://api.example.com/v1",
+        ticker="005930",
+        limit=3,
+        max_detail_tickers=3,
+        min_evidence_count=2,
+        timeout_seconds=2,
+        fetch=ComponentFetcher(components),
+    )
+
+    assert result["ok"] is False
+    assert {
+        "check": "candidate_detail",
+        "code": "score_component_weight_mismatch",
+        "component": "financial_stability",
+        "weight": 21,
+        "expected_weight": 20,
+    } in result["blockers"]
+
+
+def test_recommendation_quality_smoke_reports_unexpected_score_component() -> None:
+    components = score_components()
+    components[0] = {**components[0], "name": "unexpected_factor"}
+
+    result = smoke.run_smoke(
+        api_base_url="https://api.example.com/v1",
+        ticker="005930",
+        limit=3,
+        max_detail_tickers=3,
+        min_evidence_count=2,
+        timeout_seconds=2,
+        fetch=ComponentFetcher(components),
+    )
+
+    assert result["ok"] is False
+    assert {
+        "check": "candidate_detail",
+        "code": "unexpected_score_component",
+        "component_index": 0,
+        "component": "unexpected_factor",
     } in result["blockers"]
 
 
@@ -448,3 +470,33 @@ def score_components() -> list[dict[str, object]]:
         }
         for name, weight in smoke.EXPECTED_SCORE_COMPONENT_WEIGHTS.items()
     ]
+
+
+class ComponentFetcher(FakeFetcher):
+    def __init__(self, components: list[dict[str, object]]) -> None:
+        super().__init__()
+        self.components = components
+
+    def __call__(self, url: str, timeout_seconds: float):
+        if "/recommendations/candidates/005930" not in url:
+            return super().__call__(url, timeout_seconds)
+        return smoke.HttpResponse(
+            status_code=200,
+            body=json.dumps(
+                {
+                    "ticker": "005930",
+                    "evidence_level": "medium",
+                    "evidence_count": 3,
+                    "score_components": self.components,
+                    "risk_tags": ["sector_cycle"],
+                    "missing_data": [],
+                    "data_freshness": {"as_of": "2026-06-09"},
+                    "recommendation_reasons": [
+                        {
+                            "reason_id": "rsn_1",
+                            "summary": "공개 데이터 기준 검토 포인트가 확인됩니다.",
+                        }
+                    ],
+                }
+            ).encode("utf-8"),
+        )
