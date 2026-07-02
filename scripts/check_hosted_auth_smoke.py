@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
+from uuid import uuid4
 
 
 DEFAULT_HOSTED_PATHS = ("/", "/account", "/auth/callback")
@@ -374,12 +375,13 @@ def check_watchlist_write_cycle(
             error_code="preexisting_watchlist_item",
         )
 
+    smoke_marker = uuid4().hex[:12]
     add_body = {
         "ticker": ticker,
         "name": "StockBrief smoke item",
         "market": "KOSPI",
         "sector": "smoke",
-        "memo": "created by hosted auth smoke",
+        "memo": f"created by hosted auth smoke {smoke_marker}",
     }
     created = request_json(
         api_url(base_url, "/v1/me/watchlist"),
@@ -391,8 +393,28 @@ def check_watchlist_write_cycle(
     created_body = parse_json_body(created.body)
     summary["created"] = (
         created.status_code == 200
-        and response_payload(created_body).get("ticker") == ticker
+        and watchlist_item_matches(created_body, add_body)
     )
+    if not summary["created"]:
+        created_payload = response_payload(created_body)
+        marker_mismatch = (
+            created.status_code == 200
+            and isinstance(created_payload, dict)
+            and created_payload.get("ticker") == ticker
+        )
+        return CheckResult(
+            ok=False,
+            name="auth_api:/v1/me/watchlist:write_cycle",
+            target="/v1/me/watchlist/{ticker}",
+            status_code=created.status_code,
+            summary=summary,
+            error_code=(
+                "concurrent_watchlist_item_detected"
+                if marker_mismatch
+                else extract_error_code(created_body) or "watchlist_create_failed"
+            ),
+            error_message=created.error_message,
+        )
 
     updated = request_json(
         api_url(base_url, f"/v1/me/watchlist/{ticker}"),
@@ -603,6 +625,13 @@ def watchlist_contains_ticker(body: dict[str, Any], ticker: str) -> bool:
     if not isinstance(items, list):
         return False
     return any(isinstance(item, dict) and item.get("ticker") == ticker for item in items)
+
+
+def watchlist_item_matches(body: dict[str, Any], expected: dict[str, Any]) -> bool:
+    data = response_payload(body)
+    if not isinstance(data, dict):
+        return False
+    return all(data.get(key) == value for key, value in expected.items())
 
 
 def first_failure_status(*responses: HttpResponse) -> int | None:

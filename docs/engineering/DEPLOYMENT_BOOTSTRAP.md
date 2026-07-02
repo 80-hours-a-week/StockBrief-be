@@ -401,6 +401,9 @@ Resume checklist:
   /v1/me/watchlist/{ticker}`, `DELETE /v1/me/watchlist/{ticker}`, and a final
   cleanup confirmation. If the ticker already exists in the user's watchlist,
   the helper stops before writing and reports `preexisting_watchlist_item`.
+  If the ticker appears between the pre-check and `POST`, the helper requires
+  the `POST` response to echo the smoke marker before it runs `PATCH` or
+  `DELETE`; otherwise it stops with `concurrent_watchlist_item_detected`.
   PR evidence must still include only the redacted summary fields, not the
   ticker, memo, bearer token, token file path, email, or raw response body.
 
