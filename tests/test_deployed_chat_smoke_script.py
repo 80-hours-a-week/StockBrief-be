@@ -96,6 +96,21 @@ def test_deployed_chat_smoke_redacts_answer_and_validates_scenarios() -> None:
     ]
 
 
+def test_deployed_chat_smoke_fails_without_deployed_api_base_url(monkeypatch) -> None:
+    monkeypatch.delenv(smoke.DEFAULT_API_ENV, raising=False)
+
+    args = smoke.parse_args([])
+    result = smoke.run_smoke(api_base_url=args.api_base_url, fetch=FakeFetcher())
+
+    assert result == {
+        "ok": False,
+        "api_base_url_configured": False,
+        "ticker": "005930",
+        "checks": {},
+        "blockers": [{"code": "missing_api_base_url", "env": "STOCKBRIEF_API_BASE_URL"}],
+    }
+
+
 def test_deployed_chat_smoke_reports_missing_citations() -> None:
     result = smoke.run_smoke(
         api_base_url="https://api.example.com/v1",

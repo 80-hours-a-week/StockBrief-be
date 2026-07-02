@@ -15,7 +15,6 @@ from typing import Any, Callable
 from app.services.chat.providers import PROHIBITED_MODEL_OUTPUT_TERMS
 
 
-DEFAULT_API_BASE_URL = "http://localhost:8000/v1"
 DEFAULT_API_ENV = "STOCKBRIEF_API_BASE_URL"
 DEFAULT_TICKER = "005930"
 
@@ -89,8 +88,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--api-base-url",
-        default=os.environ.get(DEFAULT_API_ENV, DEFAULT_API_BASE_URL),
-        help="API base URL. Both https://... and https://.../v1 are accepted.",
+        default=os.environ.get(DEFAULT_API_ENV, ""),
+        help=(
+            f"Required deployed API base URL, or set {DEFAULT_API_ENV}. "
+            "Both https://... and https://.../v1 are accepted."
+        ),
     )
     parser.add_argument("--ticker", default=DEFAULT_TICKER)
     parser.add_argument("--timeout-seconds", type=float, default=12.0)
