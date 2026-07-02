@@ -28,15 +28,15 @@ evidence. Use the redacted helper outputs and summarize only status fields.
 
 | Category | Status | Evidence | Next action |
 | --- | --- | --- | --- |
-| Latest main baseline | 완료 | BE `main` fast-forwarded to `dde9eeb`; FE `main` fast-forwarded to `540c5e8` after FE #110 merged. | Start all new work from latest `main`. |
+| Latest main baseline | 완료 | BE `main` fast-forwarded to `36484f7` after BE #266; FE `main` fast-forwarded to `f0abd0c` after FE #114 merged. | Start all new work from latest `main`. |
 | Deploy profile source | 완료 | BE #252 made GitHub Environment `TFVARS_JSON` and `TF_BACKEND_CONFIG_HCL` the source of truth for `backend-dev-deploy`. | Keep runner-rendered tfvars/backend files out of the repository. |
 | Terraform apply | 완료 | `backend-dev-deploy` run `28560982229` applied NAT/scheduler resources; run `28561585744` deployed the #254 Lambda package. | Inspect the push deploy run after every merge to `main`. |
 | API Gateway and Lambda API | 완료 | `GET /v1/health` returned `status=ok`, `service=stockbrief-api`, `environment=dev`. | Continue using deployed smoke before release or after resume. |
 | Recommendation API | 완료 | `GET /v1/recommendations/candidates?limit=3` returned `count=3`, first ticker `005930`, evidence level `medium`, evidence count `42`. | Re-run deployed API smoke after recommendation, ingestion, or Lambda deploy changes. |
-| Recommendation quality | 완료 | `scripts/check_recommendation_quality_smoke.py --ticker 005930` returned `ok=true`; candidate detail evidence count `42`; stock evidence count `20`; blockers `[]`. | Re-run before product-flow work that changes candidate quality or evidence joins. |
+| Recommendation quality | 완료 | `scripts/check_recommendation_quality_smoke.py --limit 3 --max-detail-tickers 3` returned `ok=true`; selected tickers `005930`, `207940`, `000660`; each detail returned 8 score components with weight sum `100`; blockers `[]`. | Re-run before product-flow work that changes candidate quality or evidence joins. |
 | Cognito | 완료 | Terraform outputs include user pool `ap-northeast-2_VPOccT5rI`, issuer, app client, and Hosted UI domain; BE #225 verified the full protected API smoke with a short-lived token. | Re-run full hosted auth smoke after Cognito, callback, account API, or Amplify domain changes. |
 | Amplify hosted pages | 완료 | Page-only hosted smoke for `/`, `/account`, and `/auth/callback` returned HTTP 200 at `https://main.d20hgo2k8atldu.amplifyapp.com`. | Re-run hosted page smoke after FE deploy or Amplify config changes. |
-| FE live evidence visibility | 완료 | FE hosted evidence smoke returned `ok=true` with `/` and `/stocks/005930` both HTTP 200 and no missing page markers. | Re-run after FE detail/recommendation UI, API base, or Amplify deploy changes. |
+| FE live evidence visibility | 완료 | FE hosted evidence/watchlist smoke returned `ok=true` with `/`, `/stocks/005930`, and `/watchlist` all HTTP 200 and no missing page markers. | Re-run after FE detail/recommendation/watchlist UI, API base, or Amplify deploy changes. |
 | RDS | 완료 | `stockbrief-dev-postgres` is available, PostgreSQL `16.13`, deletion protection `false`, backup retention `1`. | Stop RDS during inactive cost windows per `DEPLOYMENT_BOOTSTRAP.md`. |
 | RDS Proxy | 완료 | Terraform output `rds_proxy_endpoint` is empty and `enable_rds_proxy=false`. | Keep disabled until Lambda concurrency requires pooling. |
 | Bedrock direct provider | 완료 | `scripts/check_bedrock_chat_smoke.py` returned `ok=true`, model `apac.amazon.nova-micro-v1:0`, `matched_terms=[]`. | Keep AgentCore Runtime out of this phase. |
