@@ -154,7 +154,7 @@ def run_smoke(
         checks["candidate_detail"] = CheckResult(
             ok=False,
             name="candidate_detail",
-            target="/v1/stocks/candidates/{ticker}",
+            target="/v1/recommendations/candidates/{ticker}",
             status_code=None,
             summary={"ticker_selected": False},
             blockers=[{"code": "missing_candidate_ticker"}],

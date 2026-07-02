@@ -244,6 +244,27 @@ def test_recommendation_quality_smoke_checks_multiple_listed_tickers() -> None:
     ]
 
 
+def test_recommendation_quality_smoke_reports_canonical_detail_target_without_selection() -> None:
+    result = smoke.run_smoke(
+        api_base_url="https://api.example.com",
+        ticker="",
+        limit=3,
+        max_detail_tickers=0,
+        min_evidence_count=2,
+        timeout_seconds=2,
+        fetch=FakeFetcher(),
+    )
+
+    assert result["ok"] is False
+    assert result["checks"]["candidate_detail"]["target"] == (
+        "/v1/recommendations/candidates/{ticker}"
+    )
+    assert {
+        "check": "candidate_detail",
+        "code": "missing_candidate_ticker",
+    } in result["blockers"]
+
+
 def test_recommendation_quality_smoke_requires_complete_score_components() -> None:
     class BrokenComponentFetcher(FakeFetcher):
         def __call__(self, url: str, timeout_seconds: float):
