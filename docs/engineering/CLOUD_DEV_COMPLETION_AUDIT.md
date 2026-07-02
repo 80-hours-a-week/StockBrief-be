@@ -28,7 +28,7 @@ evidence. Use the redacted helper outputs and summarize only status fields.
 
 | Category | Status | Evidence | Next action |
 | --- | --- | --- | --- |
-| Latest main baseline | 완료 | BE `main` fast-forwarded to `dde9eeb`; FE `main` remains at `6276774`. | Start all new work from latest `main`. |
+| Latest main baseline | 완료 | BE `main` fast-forwarded to `dde9eeb`; FE `main` fast-forwarded to `540c5e8` after FE #110 merged. | Start all new work from latest `main`. |
 | Deploy profile source | 완료 | BE #252 made GitHub Environment `TFVARS_JSON` and `TF_BACKEND_CONFIG_HCL` the source of truth for `backend-dev-deploy`. | Keep runner-rendered tfvars/backend files out of the repository. |
 | Terraform apply | 완료 | `backend-dev-deploy` run `28560982229` applied NAT/scheduler resources; run `28561585744` deployed the #254 Lambda package. | Inspect the push deploy run after every merge to `main`. |
 | API Gateway and Lambda API | 완료 | `GET /v1/health` returned `status=ok`, `service=stockbrief-api`, `environment=dev`. | Continue using deployed smoke before release or after resume. |
@@ -259,9 +259,9 @@ Evidence captured on 2026-07-02:
   date, and source reference present
 - `blockers=[]`
 
-FE #104 originally added this smoke. Re-run it after any FE deploy or API base
-URL change. FE #110 is a type/test cleanup PR and does not change runtime API
-behavior.
+FE #104 originally added this smoke. FE #110 has merged and the hosted evidence
+smoke still passes against the current hosted FE. Re-run it after any later FE
+deploy, detail/recommendation runtime UI change, or API base URL change.
 
 ## Terraform Profile And Drift Notes
 
@@ -287,9 +287,8 @@ plan blindly. Any create, destroy, or cost-sensitive in-place change must be
 classified in the PR body before merge.
 
 Historical note: the 2026-06-29 #221 follow-up recorded a paused-cost local
-baseline with `0 to add, 5 to change, 0 to destroy`. That baseline is superseded
-for the current live ingestion window by BE #252 and BE #254.
-The previous paused-cost baseline is superseded for the current live ingestion window by BE #252 and BE #254.
+baseline with `0 to add, 5 to change, 0 to destroy`. That baseline is
+superseded for the current live ingestion window by BE #252 and BE #254.
 
 After #214, the default cost posture remains pause-first even though the current
 window is intentionally active.
@@ -298,10 +297,8 @@ NAT/scheduler cost posture decided in #214 still applies as the default rule:
 
 - Pause `enable_lambda_nat_egress` and `enable_ingestion_scheduler` while no
   live provider ingestion work is active.
-- Keep the reviewed OpenDART/NAVER `005930` job definitions as reactivation
-  inputs.
-- Keep those job definitions as reactivation inputs for the next reviewed
-  pause/resume cycle.
+- Keep the reviewed OpenDART/NAVER `005930` job definitions as reactivation inputs
+  for the next reviewed pause/resume cycle.
 - Re-enable or pause NAT and scheduler only through a reviewed PR and GitHub
   Environment tfvars.
 - Treat remaining Amplify, Cognito, RDS, and Lambda package hash in-place drift
@@ -342,13 +339,15 @@ the current dev baseline:
    scheduler from GitHub Environment tfvars.
 5. BE #254 fixed provider-scoped ingestion scheduler readiness and the
    post-deploy smoke returned `scheduler_enable_ready=true`.
-6. Recommendation quality, hosted page auth smoke, and FE hosted evidence smoke
+6. FE #110 merged the recommendation candidate contract cleanup without changing
+   runtime API behavior.
+7. Recommendation quality, hosted page auth smoke, and FE hosted evidence smoke
    all returned `ok=true` on 2026-07-02.
-7. NAT/scheduler cost posture is intentionally chosen for the current work
+8. NAT/scheduler cost posture is intentionally chosen for the current work
    window: both are active because live provider ingestion work is active.
 
 Candidate next product checks after those gates:
 
 - account watchlist/auth smoke with a short-lived token
 - recommendation candidate quality criteria for additional tickers
-- live evidence visibility after FE #110 or later runtime UI changes merge
+- live evidence visibility after later FE runtime UI changes merge
