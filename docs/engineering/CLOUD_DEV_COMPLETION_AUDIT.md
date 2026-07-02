@@ -271,11 +271,14 @@ Evidence captured on 2026-07-02:
 - `/`: HTTP 200, product name and candidate copy present
 - `/stocks/005930`: HTTP 200, score, evidence section, evidence ID, published
   date, and source reference present
+- `/watchlist`: HTTP 200, watchlist heading and guest localStorage copy present
 - `blockers=[]`
 
-FE #104 originally added this smoke. FE #110 has merged and the hosted evidence
-smoke still passes against the current hosted FE. Re-run it after any later FE
-deploy, detail/recommendation runtime UI change, or API base URL change.
+FE #104 originally added this smoke. FE #110 aligned the recommendation
+contract, and FE #112 expanded the hosted smoke to include the guest watchlist
+page. The hosted evidence/watchlist smoke still passes against the current
+hosted FE. Re-run it after any later FE deploy, detail/recommendation/watchlist
+runtime UI change, or API base URL change.
 
 ## Terraform Profile And Drift Notes
 
@@ -355,8 +358,8 @@ the current dev baseline:
    post-deploy smoke returned `scheduler_enable_ready=true`.
 6. FE #110 merged the recommendation candidate contract cleanup without changing
    runtime API behavior.
-7. Recommendation quality, hosted page auth smoke, and FE hosted evidence smoke
-   all returned `ok=true` on 2026-07-02.
+7. Recommendation quality, hosted page auth smoke, and FE hosted
+   evidence/watchlist smoke all returned `ok=true` on 2026-07-02.
 8. NAT/scheduler cost posture is intentionally chosen for the current work
    window: both are active because live provider ingestion work is active.
 
@@ -364,4 +367,4 @@ Candidate next product checks after those gates:
 
 - account watchlist/auth smoke with a short-lived token
 - recommendation candidate quality criteria for additional tickers
-- live evidence visibility after later FE runtime UI changes merge
+- live evidence/watchlist visibility after future FE runtime UI changes merge
