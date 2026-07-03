@@ -197,6 +197,8 @@ Evidence captured on 2026-07-02:
 
 ### Recommendation Quality Smoke
 
+The 2026-07-03 additional ticker smoke used this command:
+
 ```bash
 STOCKBRIEF_API_BASE_URL="https://hazfha7995.execute-api.ap-northeast-2.amazonaws.com" \
 uv run python scripts/check_recommendation_quality_smoke.py \

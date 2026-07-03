@@ -335,6 +335,14 @@ def test_cloud_dev_completion_audit_documents_current_scope_and_smokes() -> None
     assert "`GET /v1/health`" in audit_doc
     assert "`GET /v1/recommendations/candidates?limit=3`" in audit_doc
     assert "scripts/check_recommendation_quality_smoke.py --limit 5 --max-detail-tickers 3 --expected-ticker 005930 --expected-ticker 207940 --expected-ticker 000660" in audit_doc
+    recommendation_quality_section = _markdown_section(
+        audit_doc, "Recommendation Quality Smoke"
+    )
+    assert "The 2026-07-03 additional ticker smoke used this command:" in recommendation_quality_section
+    assert "Evidence captured on 2026-07-03:" in recommendation_quality_section
+    assert "--limit 5" in recommendation_quality_section
+    assert "--expected-ticker 005930" in recommendation_quality_section
+    assert "Evidence captured on 2026-07-02:" not in recommendation_quality_section
     assert "`/recommendations/candidates?limit=5`, count `5`" in audit_doc
     assert "missing expected tickers `[]`" in audit_doc
     assert "each detail returned 8 score components with weight sum `100`" in audit_doc
