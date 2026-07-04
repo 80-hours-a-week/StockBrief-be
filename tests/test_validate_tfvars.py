@@ -64,6 +64,17 @@ def test_rejects_agentcore_chat_without_runtime_enabled() -> None:
     assert "chat_provider=agentcore requires a non-empty agentcore_runtime_container_uri" in message
 
 
+def test_rejects_partial_agentcore_external_runtime_metadata() -> None:
+    with pytest.raises(TfvarsValidationError) as exc_info:
+        _load(
+            _tfvars(
+                agentcore_runtime_external_arn="arn:aws:bedrock-agentcore:ap-northeast-2:123456789012:runtime/example",
+            )
+        )
+
+    assert "agentcore_runtime_external_arn and agentcore_runtime_external_id" in _messages(exc_info)
+
+
 def test_rejects_vpc_agentcore_without_networking_or_security_groups() -> None:
     with pytest.raises(TfvarsValidationError) as exc_info:
         _load(_tfvars(agentcore_network_mode="VPC"))
