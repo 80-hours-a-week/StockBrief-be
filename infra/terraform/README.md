@@ -1103,7 +1103,10 @@ base plan, direct-deploys AgentCore when enabled, then applies a second plan wit
 the direct runtime metadata. SSM metadata must contain
 `runtime_arn`, `runtime_id`, and `endpoint_name` together; partial metadata fails
 fast during hydrate so a previous interrupted deploy does not silently produce a
-half-wired Lambda.
+half-wired Lambda. If hydrate fails on incomplete metadata, verify the
+AgentCore Runtime and endpoint in the AWS control plane, then rewrite all three
+SSM parameters from the verified values or remove the stale set under a reviewed
+cleanup before rerunning `backend-dev-deploy`.
 
 `AWS_DEV_DEPLOY_ROLE_ARN` remains supported for the default `dev` profile only.
 For rotating team accounts, use explicit Environment variables such as
