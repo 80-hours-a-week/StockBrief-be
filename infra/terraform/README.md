@@ -710,7 +710,10 @@ The module still contains a legacy CloudFormation fallback for state
 compatibility behind `agentcore_runtime_manage_with_cloudformation=true`, but
 the reviewed GitHub Actions path keeps that false and does not create
 `AWS::BedrockAgentCore::Runtime` or
-`AWS::BedrockAgentCore::RuntimeEndpoint`.
+`AWS::BedrockAgentCore::RuntimeEndpoint`. The fallback stack has
+`prevent_destroy=true`; if an old environment has that stack in Terraform state,
+review and remove state deliberately instead of letting a direct-deploy migration
+delete it.
 
 ## Direct Bedrock Chat Provider
 
@@ -1097,7 +1100,10 @@ route-table egress can be reviewed before apply.
 The workflow builds `dist/stockbrief-api-lambda.zip`, initializes Terraform with
 the selected S3 backend config, plans with the selected tfvars file, applies the
 base plan, direct-deploys AgentCore when enabled, then applies a second plan with
-the direct runtime metadata.
+the direct runtime metadata. SSM metadata must contain
+`runtime_arn`, `runtime_id`, and `endpoint_name` together; partial metadata fails
+fast during hydrate so a previous interrupted deploy does not silently produce a
+half-wired Lambda.
 
 `AWS_DEV_DEPLOY_ROLE_ARN` remains supported for the default `dev` profile only.
 For rotating team accounts, use explicit Environment variables such as

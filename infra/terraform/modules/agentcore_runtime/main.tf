@@ -178,6 +178,10 @@ resource "aws_cloudformation_stack" "runtime" {
   name         = "${var.name_prefix}-agentcore-runtime"
   capabilities = ["CAPABILITY_NAMED_IAM"]
 
+  lifecycle {
+    prevent_destroy = true
+  }
+
   template_body = yamlencode({
     AWSTemplateFormatVersion = "2010-09-09"
     Description              = "StockBrief AgentCore Runtime and default endpoint."

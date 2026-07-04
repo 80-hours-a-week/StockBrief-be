@@ -5,12 +5,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import boto3
+import pytest
 from botocore.stub import Stubber
 
 from scripts.deploy_agentcore_runtime import (
     _deploy_runtime,
     _patch_tfvars,
     _runtime_environment,
+    _validate_ssm_metadata,
     _write_tfvars,
 )
 
@@ -117,6 +119,19 @@ def test_agentcore_metadata_patches_external_runtime_tfvars() -> None:
     assert tfvars["agentcore_runtime_external_arn"].endswith(":runtime/test")
     assert tfvars["agentcore_runtime_external_id"] == "stockbrief_dev_owen_agent-ABCDEFGHIJ"
     assert tfvars["agentcore_runtime_endpoint_name"] == "stockbrief_dev_owen_default"
+
+
+def test_rejects_partial_ssm_metadata() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        _validate_ssm_metadata(
+            {
+                "runtime_arn": RUNTIME_ARN,
+                "runtime_id": RUNTIME_ID,
+            }
+        )
+
+    assert "Incomplete AgentCore SSM metadata" in str(exc_info.value)
+    assert "endpoint_name" in str(exc_info.value)
 
 
 def test_agentcore_runtime_environment_matches_tfvars() -> None:

@@ -218,6 +218,7 @@ def test_agentcore_runtime_module_supports_direct_deploy_external_runtime() -> N
     assert "AWS::BedrockAgentCore::Runtime" in agentcore_tf
     assert "AWS::BedrockAgentCore::RuntimeEndpoint" in agentcore_tf
     assert "manage_runtime = local.enabled && var.manage_with_cloudformation" in agentcore_tf
+    assert "prevent_destroy = true" in agentcore_tf
     assert "external_runtime_arn" in agentcore_tf
     assert "local.effective_runtime_arn" in agentcore_outputs_tf
     assert 'output "runtime_role_arn"' in agentcore_outputs_tf

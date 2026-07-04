@@ -14,6 +14,7 @@ from botocore.exceptions import ClientError
 
 READY_STATES = {"READY"}
 FAILED_STATES = {"CREATE_FAILED", "UPDATE_FAILED", "FAILED", "DELETE_FAILED"}
+REQUIRED_METADATA_KEYS = {"runtime_arn", "runtime_id", "endpoint_name"}
 
 
 def _fail(message: str) -> int:
@@ -115,6 +116,13 @@ def _write_ssm_metadata(ssm, prefix: str, metadata: dict[str, str]) -> None:
             Type="String",
             Overwrite=True,
         )
+
+
+def _validate_ssm_metadata(metadata: dict[str, str]) -> None:
+    present = {key for key in REQUIRED_METADATA_KEYS if metadata.get(key)}
+    if present and present != REQUIRED_METADATA_KEYS:
+        missing = ", ".join(sorted(REQUIRED_METADATA_KEYS - present))
+        raise ValueError(f"Incomplete AgentCore SSM metadata. Missing: {missing}.")
 
 
 def _patch_tfvars(tfvars: dict[str, Any], metadata: dict[str, str]) -> bool:
@@ -276,6 +284,7 @@ def main() -> int:
 
         ssm = boto3.client("ssm", region_name=args.region)
         metadata = _ssm_metadata(ssm, _ssm_prefix(tfvars))
+        _validate_ssm_metadata(metadata)
         if _patch_tfvars(tfvars, metadata):
             _write_tfvars(args.var_file, tfvars)
             print("AgentCore tfvars hydrated from SSM metadata.")
