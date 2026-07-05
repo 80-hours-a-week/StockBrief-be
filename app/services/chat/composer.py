@@ -38,7 +38,7 @@ REFERENCE_BRACKET_PATTERN = re.compile(
 )
 EVIDENCE_LABEL_PATTERN = re.compile(r"\[(?:증거 요약|근거 요약)\]")
 DANGLING_REFERENCE_BRACKET_PATTERN = re.compile(r"\s*[\[\]]+\s*$")
-TRAILING_REFERENCE_PUNCTUATION_PATTERN = re.compile(r"\s+[,;:]\s*$")
+TRAILING_REFERENCE_PUNCTUATION_PATTERN = re.compile(r"(?:\s+[,;:])+\s*$")
 
 
 def compose_chat_answer(
