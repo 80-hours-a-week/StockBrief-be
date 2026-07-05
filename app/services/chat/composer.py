@@ -37,6 +37,7 @@ REFERENCE_BRACKET_PATTERN = re.compile(
     r"\[[^\]]*(?:ev_[A-Za-z0-9_.:-]+|rsn_[A-Za-z0-9_.:-]+)[^\]]*\]"
 )
 EVIDENCE_LABEL_PATTERN = re.compile(r"\[(?:증거 요약|근거 요약)\]")
+DANGLING_REFERENCE_BRACKET_PATTERN = re.compile(r"\s+[\[\]]+\s*$")
 
 
 def compose_chat_answer(
@@ -109,7 +110,10 @@ def normalize_chat_answer(answer: str) -> str:
     normalized = EVIDENCE_LABEL_PATTERN.sub("", normalized)
     normalized = MARKDOWN_BOLD_PATTERN.sub(r"\1", normalized)
     normalized = BARE_URL_PATTERN.sub("", normalized)
-    lines = [re.sub(r"[ \t]{2,}", " ", line).rstrip() for line in normalized.splitlines()]
+    lines = [
+        DANGLING_REFERENCE_BRACKET_PATTERN.sub("", re.sub(r"[ \t]{2,}", " ", line)).rstrip()
+        for line in normalized.splitlines()
+    ]
     return "\n".join(lines).strip()
 
 
