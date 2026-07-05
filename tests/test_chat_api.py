@@ -987,6 +987,49 @@ def test_chat_removes_reference_id_brackets_before_return(
     assert ", ," not in answer
 
 
+def test_chat_falls_back_when_normalized_answer_keeps_artifacts(
+    seeded_api_client: TestClient,
+    monkeypatch,
+) -> None:
+    class ArtifactProvider:
+        name = "mock"
+
+        def compose(self, request):
+            baseline = compose_chat_answer(
+                message=request.message,
+                candidate=request.candidate,
+                evidence=request.evidence,
+            )
+            return baseline.model_copy(
+                update={
+                    "answer": (
+                        "재무 안정성 항목에서 공개 데이터 기준 검토 포인트가 확인되었습니다. "
+                        ", ] 에 대한 증거가 있습니다.\n"
+                        "뉴스 관심도 항목에서 공개 데이터 기준 검토 포인트가 확인되었습니다. "
+                        ", ,... 등 여러 증거"
+                    )
+                }
+            )
+
+    monkeypatch.setattr(
+        "app.routes.chat.chat_provider_for",
+        lambda *args, **kwargs: ArtifactProvider(),
+    )
+
+    response = seeded_api_client.post(
+        "/v1/chat",
+        json={"ticker": "005930", "message": "왜 추천됐나요?"},
+    )
+
+    assert response.status_code == 200
+    answer = response.json()["data"]["answer"]
+    assert "추천 후보 점수" in answer
+    assert "에 대한 증거가 있습니다" not in answer
+    assert "등 여러 증거" not in answer
+    assert ", ," not in answer
+    assert "]" not in answer
+
+
 def test_chat_provider_factory_failure_returns_fail_closed_response(
     seeded_api_client: TestClient,
     monkeypatch,

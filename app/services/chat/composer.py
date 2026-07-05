@@ -45,6 +45,10 @@ HIDDEN_REASONING_PATTERN = re.compile(
     r"<\s*(?:thinking|reasoning|analysis)\b[^>]*>.*?(?:<\s*/\s*(?:thinking|reasoning|analysis)\s*>|$)",
     re.IGNORECASE | re.DOTALL,
 )
+PRESENTATION_ARTIFACT_PATTERN = re.compile(
+    r"<\s*(?:thinking|reasoning|analysis)\b|[\[\]]|,\s*,|\(\s*\)|등 여러 증거|에 대한 증거가 있습니다",
+    re.IGNORECASE,
+)
 
 
 def compose_chat_answer(
@@ -118,12 +122,17 @@ def normalize_chat_answer(answer: str) -> str:
     normalized = EVIDENCE_LABEL_PATTERN.sub("", normalized)
     normalized = MARKDOWN_BOLD_PATTERN.sub(r"\1", normalized)
     normalized = BARE_URL_PATTERN.sub("", normalized)
+    normalized = normalized.replace("[", "").replace("]", "")
     lines = [_clean_chat_answer_line(line) for line in normalized.splitlines()]
     return "\n".join(lines).strip()
 
 
 def contains_hidden_reasoning(answer: str) -> bool:
     return bool(HIDDEN_REASONING_PATTERN.search(answer))
+
+
+def has_chat_answer_artifacts(answer: str) -> bool:
+    return bool(PRESENTATION_ARTIFACT_PATTERN.search(answer))
 
 
 def _clean_chat_answer_line(line: str) -> str:
