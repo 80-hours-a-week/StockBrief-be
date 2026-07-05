@@ -331,7 +331,7 @@ def test_cloud_dev_completion_audit_documents_current_scope_and_smokes() -> None
     assert "Other teammate" in audit_doc
     assert "완료" in audit_doc
 
-    assert "BE `main` is at `126ee45` after BE #304" in audit_doc
+    assert "BE `main` is at `4fc7f20` after BE #306" in audit_doc
     assert "FE `main` is at `bc3dd1d` after FE #123" in audit_doc
     assert "`GET /v1/health`" in audit_doc
     assert "`GET /v1/recommendations/candidates?limit=3`" in audit_doc
@@ -381,6 +381,9 @@ def test_cloud_dev_completion_audit_documents_current_scope_and_smokes() -> None
     assert "account watchlist/auth smoke with a short-lived token" not in audit_doc
     assert "scripts/check_ingestion_smoke.py" in audit_doc
     assert "matched_terms=[]" in audit_doc
+    assert "`28743421982` on commit `4fc7f20`" in audit_doc
+    assert "`26948f928c1d`" in audit_doc
+    assert "`0f48ac9be7e3`" in audit_doc
     assert "ready_for_manual_ingestion=false" in audit_doc
     assert "scheduler_enable_ready=false" in audit_doc
     assert "`KRX_API_KEY` is missing" in audit_doc
