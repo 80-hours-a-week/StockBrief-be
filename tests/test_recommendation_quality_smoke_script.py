@@ -23,12 +23,14 @@ class FakeFetcher:
         self,
         *,
         tickers: tuple[str, ...] = ("005930",),
+        risk_tags: tuple[str, ...] = ("sector_cycle",),
         weak_detail: bool = False,
         missing_evidence_source_metadata: bool = False,
         score_evidence_without_url: bool = False,
         score_evidence_without_metadata: bool = False,
     ) -> None:
         self.tickers = tickers
+        self.risk_tags = risk_tags
         self.weak_detail = weak_detail
         self.missing_evidence_source_metadata = missing_evidence_source_metadata
         self.score_evidence_without_url = score_evidence_without_url
@@ -70,7 +72,7 @@ class FakeFetcher:
                         "evidence_level": "medium",
                         "evidence_count": evidence_count,
                         "score_components": score_components(),
-                        "risk_tags": ["sector_cycle"],
+                        "risk_tags": list(self.risk_tags),
                         "missing_data": [],
                         "data_freshness": {"as_of": "2026-06-09"},
                         "recommendation_reasons": [
@@ -244,6 +246,21 @@ def test_recommendation_quality_smoke_checks_multiple_listed_tickers() -> None:
         "https://api.example.com/v1/recommendations/candidates/000660",
         "https://api.example.com/v1/stocks/000660/evidence",
     ]
+
+
+def test_recommendation_quality_smoke_allows_empty_risk_tag_array() -> None:
+    result = smoke.run_smoke(
+        api_base_url="https://api.example.com",
+        ticker="005930",
+        limit=3,
+        max_detail_tickers=1,
+        min_evidence_count=2,
+        timeout_seconds=2,
+        fetch=FakeFetcher(risk_tags=()),
+    )
+
+    assert result["ok"] is True
+    assert result["checks"]["candidate_detail"]["summary"]["risk_tag_count"] == 0
 
 
 def test_recommendation_quality_smoke_prioritizes_expected_tickers_for_detail_checks() -> None:
