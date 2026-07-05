@@ -954,7 +954,7 @@ def test_chat_removes_reference_id_brackets_before_return(
                 update={
                     "answer": (
                         "재무 안정성 항목에서 공개 데이터 기준 검토 포인트가 확인됩니다. "
-                        f"[추천 이유 ID: rsn_005930_sample][증거 ID: {evidence_id}] [증거 요약]"
+                        f"[추천 이유 ID: rsn_005930_sample][증거 ID: {evidence_id}]] [증거 요약]"
                     )
                 }
             )
@@ -975,6 +975,7 @@ def test_chat_removes_reference_id_brackets_before_return(
     assert "증거 ID" not in answer
     assert "증거 요약" not in answer
     assert "[ev_" not in answer
+    assert "]" not in answer
 
 
 def test_chat_provider_factory_failure_returns_fail_closed_response(
