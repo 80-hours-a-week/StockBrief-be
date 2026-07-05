@@ -953,10 +953,12 @@ def test_chat_removes_reference_id_brackets_before_return(
             return baseline.model_copy(
                 update={
                     "answer": (
+                        "[추천 이유 1] "
                         "재무 안정성 항목에서 공개 데이터 기준 검토 포인트가 확인됩니다. "
                         f"[추천 이유 ID: rsn_005930_sample][증거 ID: {evidence_id}]] "
                         "[증거 요약: 삼성전자 관련 뉴스] [추가 증거 참조: 여러 증거 ID들]\n"
-                        "수익성 항목에서 공개 데이터 기준 검토 포인트가 확인됩니다. , ,"
+                        "수익성 항목에서 공개 데이터 기준 검토 포인트가 확인됩니다. , [2\n"
+                        "추천 점수는 53.1점입니다. ()"
                     )
                 }
             )
@@ -977,8 +979,11 @@ def test_chat_removes_reference_id_brackets_before_return(
     assert "증거 ID" not in answer
     assert "증거 요약" not in answer
     assert "추가 증거" not in answer
+    assert "추천 이유 1" not in answer
     assert "[ev_" not in answer
     assert "]" not in answer
+    assert "[2" not in answer
+    assert "()" not in answer
     assert ", ," not in answer
 
 

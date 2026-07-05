@@ -229,6 +229,32 @@ def test_agentcore_provider_blocks_unsafe_runtime_answer(
         provider.compose(request)
 
 
+def test_agentcore_provider_falls_back_on_hidden_reasoning(
+    seeded_session: Session,
+) -> None:
+    request = _provider_input(seeded_session)
+    baseline = compose_chat_answer(
+        message=request.message,
+        candidate=request.candidate,
+        evidence=request.evidence,
+    )
+    provider = AgentCoreChatProvider(
+        runtime_url="http://runtime.local",
+        runtime_invoker=lambda payload: {
+            "status": "success",
+            "response": {
+                "answer": "<thinking>internal reasoning</thinking>사용자 답변입니다.",
+                "trace": {"selected_tools": ["get_candidate"]},
+            },
+        },
+    )
+
+    response = provider.compose(request)
+
+    assert response.answer == baseline.answer
+    assert response.citations == baseline.citations
+
+
 def test_agentcore_provider_blocks_broken_citation(
     seeded_session: Session,
 ) -> None:

@@ -18,7 +18,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import Settings
 from app.models import ChatCitation, ChatResponse
-from app.services.chat.composer import compose_chat_answer
+from app.services.chat.composer import compose_chat_answer, contains_hidden_reasoning
 from app.services.chat.providers import (
     ChatProviderInput,
     ChatProviderUnavailable,
@@ -108,6 +108,14 @@ class AgentCoreChatProvider:
             raise ChatProviderUnavailable(
                 "AgentCore chat provider returned an empty answer."
             )
+        if contains_hidden_reasoning(answer):
+            _log_agentcore_guard_failure(
+                reason="hidden_reasoning",
+                started_at=started_at,
+                answer=answer,
+                trace=trace,
+            )
+            return baseline
         guard_result = _evaluate_prohibited_output(answer)
         if guard_result.blocked:
             _log_agentcore_guard_failure(
