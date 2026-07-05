@@ -34,10 +34,11 @@ MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(https?://[^)\s]+\)")
 MARKDOWN_BOLD_PATTERN = re.compile(r"\*\*([^*\n]+)\*\*")
 BARE_URL_PATTERN = re.compile(r"<?https?://\S+>?")
 REFERENCE_BRACKET_PATTERN = re.compile(
-    r"\[[^\]]*(?:ev_[A-Za-z0-9_.:-]+|rsn_[A-Za-z0-9_.:-]+)[^\]]*\]"
+    r"\[[^\]]*(?:ev_[A-Za-z0-9_.:-]+|rsn_[A-Za-z0-9_.:-]+|증거|근거)[^\]]*\]"
 )
 EVIDENCE_LABEL_PATTERN = re.compile(r"\[(?:증거 요약|근거 요약)\]")
-DANGLING_REFERENCE_BRACKET_PATTERN = re.compile(r"\s+[\[\]]+\s*$")
+DANGLING_REFERENCE_BRACKET_PATTERN = re.compile(r"\s*[\[\]]+\s*$")
+TRAILING_REFERENCE_PUNCTUATION_PATTERN = re.compile(r"\s+[,;:]\s*$")
 
 
 def compose_chat_answer(
@@ -111,7 +112,12 @@ def normalize_chat_answer(answer: str) -> str:
     normalized = MARKDOWN_BOLD_PATTERN.sub(r"\1", normalized)
     normalized = BARE_URL_PATTERN.sub("", normalized)
     lines = [
-        DANGLING_REFERENCE_BRACKET_PATTERN.sub("", re.sub(r"[ \t]{2,}", " ", line)).rstrip()
+        TRAILING_REFERENCE_PUNCTUATION_PATTERN.sub(
+            "",
+            DANGLING_REFERENCE_BRACKET_PATTERN.sub(
+                "", re.sub(r"[ \t]{2,}", " ", line)
+            ),
+        ).rstrip()
         for line in normalized.splitlines()
     ]
     return "\n".join(lines).strip()
