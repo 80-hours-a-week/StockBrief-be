@@ -913,7 +913,9 @@ def test_chat_normalizes_markdown_links_before_return(
             return baseline.model_copy(
                 update={
                     "answer": (
-                        f"1. **재무 안정성** [{evidence_id}](https://example.com/news?ref=naver)\n"
+                        "1. **재무 안정성** [공시](https://example.com/report)를 확인했습니다.\n"
+                        "추가로 [근거 자료](https://example.com/source)도 확인했습니다.\n"
+                        f"근거 [{evidence_id}](https://example.com/news?ref=naver)\n"
                         "https://example.com/raw"
                     )
                 }
@@ -933,7 +935,10 @@ def test_chat_normalizes_markdown_links_before_return(
     answer = response.json()["data"]["answer"]
     assert "**" not in answer
     assert "https://" not in answer
+    assert "공시를 확인했습니다" in answer
+    assert "근거 자료도 확인했습니다" in answer
     assert "[ev_" not in answer
+    assert "ev_" not in answer
 
 
 def test_chat_removes_reference_id_brackets_before_return(

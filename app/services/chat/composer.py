@@ -33,8 +33,11 @@ CERTAINTY_TERMS = ("수익 보장", "보장", "확실", "무조건", "guaranteed
 MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(https?://[^)\s]+\)")
 MARKDOWN_BOLD_PATTERN = re.compile(r"\*\*([^*\n]+)\*\*")
 BARE_URL_PATTERN = re.compile(r"<?https?://\S+>?")
+REFERENCE_LABEL_PATTERN = re.compile(
+    r"(?:ev_[A-Za-z0-9_.:-]+|rsn_[A-Za-z0-9_.:-]+|(?:증거|근거)\s*(?:ID|요약|참조)|추천 이유\s*(?:ID|\d+))"
+)
 REFERENCE_BRACKET_PATTERN = re.compile(
-    r"\[[^\]\n]+\]"
+    rf"\[[^\]\n]*{REFERENCE_LABEL_PATTERN.pattern}[^\]\n]*\]"
 )
 EVIDENCE_LABEL_PATTERN = re.compile(r"\[(?:증거 요약|근거 요약)\]")
 DANGLING_REFERENCE_BRACKET_PATTERN = re.compile(r"\s*[\[\]]+\s*$")
@@ -117,7 +120,7 @@ def evaluate_policy(message: str) -> PolicyDecision:
 
 def normalize_chat_answer(answer: str) -> str:
     normalized = HIDDEN_REASONING_PATTERN.sub("", answer)
-    normalized = MARKDOWN_LINK_PATTERN.sub(r"[\1]", normalized)
+    normalized = MARKDOWN_LINK_PATTERN.sub(_markdown_link_label, normalized)
     normalized = REFERENCE_BRACKET_PATTERN.sub("", normalized)
     normalized = EVIDENCE_LABEL_PATTERN.sub("", normalized)
     normalized = MARKDOWN_BOLD_PATTERN.sub(r"\1", normalized)
@@ -142,6 +145,13 @@ def _clean_chat_answer_line(line: str) -> str:
     cleaned = DANGLING_REFERENCE_BRACKET_PATTERN.sub("", cleaned)
     cleaned = TRAILING_REFERENCE_PUNCTUATION_PATTERN.sub("", cleaned)
     return cleaned.rstrip()
+
+
+def _markdown_link_label(match: re.Match[str]) -> str:
+    label = match.group(1)
+    if REFERENCE_LABEL_PATTERN.search(label):
+        return ""
+    return label
 
 
 def _contains_any(value: str, terms: tuple[str, ...]) -> bool:
