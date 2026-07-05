@@ -325,15 +325,14 @@ def test_cloud_dev_completion_audit_documents_current_scope_and_smokes() -> None
     ).read_text(encoding="utf-8")
 
     assert "# Cloud Dev Completion Audit" in audit_doc
-    assert "Linked issues: `#211`, `#226`, `#253`, `#255`, `#275`, `#284`, `#286`, `#290`, `#292`, `#293`, `#303`" in audit_doc
+    assert "Linked issues: `#211`, `#226`, `#253`, `#255`, `#275`, `#284`, `#286`, `#290`, `#292`, `#293`, `#303`, `#305`" in audit_doc
     assert "FE-to-BE integration" in audit_doc
     assert "toolchain migration" in audit_doc
     assert "Other teammate" in audit_doc
     assert "완료" in audit_doc
 
-    assert "BE `main` is at `be31b32` after BE #302" in audit_doc
-    assert "FE `main` is at `a7f1b9f` after FE #122" in audit_doc
-    assert "FE has open PR #123" in audit_doc
+    assert "BE `main` is at `126ee45` after BE #304" in audit_doc
+    assert "FE `main` is at `bc3dd1d` after FE #123" in audit_doc
     assert "`GET /v1/health`" in audit_doc
     assert "`GET /v1/recommendations/candidates?limit=3`" in audit_doc
     assert "scripts/check_recommendation_quality_smoke.py --limit 5 --max-detail-tickers 3 --expected-ticker 005930 --expected-ticker 000660" in audit_doc
@@ -352,6 +351,11 @@ def test_cloud_dev_completion_audit_documents_current_scope_and_smokes() -> None
     assert "all selected details returned component count `8` and" in audit_doc
     assert "`POST /v1/chat`" in audit_doc
     assert "scripts/check_bedrock_chat_smoke.py" in audit_doc
+    assert "Nova direct smoke: `ok=true`" in audit_doc
+    assert "Claude direct smoke: `ok=false`" in audit_doc
+    assert "Anthropic model use-case" in audit_doc
+    assert "details have not been submitted" in audit_doc
+    assert "get-use-case-for-model-access" in audit_doc
     assert "scripts/check_hosted_auth_smoke.py --skip-auth-api" in audit_doc
     assert "BE #225 captured a full hosted auth API smoke" in audit_doc
     assert "BE #292 captured the current full hosted auth API smoke and watchlist write-cycle" in audit_doc
