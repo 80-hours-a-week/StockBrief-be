@@ -93,3 +93,34 @@ def test_scanner_warns_when_fe_scan_root_is_missing(tmp_path: Path) -> None:
     result = _run_scanner(tmp_path)
 
     assert "warning: scan root missing, skipped: ../StockBrief-fe/src" in result.stdout
+
+
+def test_infra_scan_ignores_untracked_markdown_in_git_repo(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "tracked.md").write_text("clean doc\n", encoding="utf-8")
+    subprocess.run(["git", "add", "docs/tracked.md"], cwd=tmp_path, check=True)
+    # Local-only note with an account ID stays untracked — policy targets
+    # committed markdown, so this must pass.
+    (docs / "local-note.md").write_text(
+        "AWS account: `999988887777`\n", encoding="utf-8"
+    )
+
+    result = _run_scanner(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    assert "Infra-sensitive identifier policy passed" in result.stdout
+
+
+def test_infra_scan_flags_tracked_markdown_in_git_repo(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "leak.md").write_text("AWS account: `999988887777`\n", encoding="utf-8")
+    subprocess.run(["git", "add", "docs/leak.md"], cwd=tmp_path, check=True)
+
+    result = _run_scanner(tmp_path)
+
+    assert result.returncode == 1, result.stdout
+    assert "999988887777" in result.stdout

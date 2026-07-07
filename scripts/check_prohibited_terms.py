@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,6 +81,7 @@ PLACEHOLDER_ACCOUNT_IDS = {
 INFRA_SCAN_ROOT = Path(".")
 INFRA_SCAN_SUFFIXES = {".md"}
 
+# Fallback walk (non-git checkouts only) still skips these.
 INFRA_SKIP_DIRS = {
     ".git",
     ".next",
@@ -153,14 +155,45 @@ def main() -> int:
     return exit_code
 
 
+def _tracked_markdown_paths() -> list[Path] | None:
+    """Markdown files tracked by git — the policy targets committed docs only.
+
+    Returns None outside a git checkout so the caller can fall back to a
+    filesystem walk (used by scanner self-tests running in temp dirs).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", "*.md"],
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return [
+        Path(entry)
+        for entry in result.stdout.decode("utf-8").split("\0")
+        if entry
+    ]
+
+
+def _fallback_markdown_paths() -> list[Path]:
+    return [
+        path
+        for path in sorted(INFRA_SCAN_ROOT.rglob("*"))
+        if path.is_file()
+        and path.suffix in INFRA_SCAN_SUFFIXES
+        and not any(part in INFRA_SKIP_DIRS for part in path.parts)
+    ]
+
+
 def scan_infra_terms() -> list[InfraViolation]:
     violations: list[InfraViolation] = []
-    for path in sorted(INFRA_SCAN_ROOT.rglob("*")):
+    paths = _tracked_markdown_paths()
+    if paths is None:
+        print("warning: not a git checkout; scanning all markdown files")
+        paths = _fallback_markdown_paths()
+    for path in sorted(paths):
         if not path.is_file():
-            continue
-        if path.suffix not in INFRA_SCAN_SUFFIXES:
-            continue
-        if any(part in INFRA_SKIP_DIRS for part in path.parts):
             continue
         lines = path.read_text(encoding="utf-8").splitlines()
         for index, line in enumerate(lines):
