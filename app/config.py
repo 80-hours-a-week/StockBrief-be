@@ -97,7 +97,9 @@ def validate_startup_settings(settings: Settings) -> None:
     problems: list[str] = []
 
     if settings.chat_provider == "bedrock":
-        if not settings.bedrock_chat_model_id:
+        # Providers strip these values before checking, so whitespace-only
+        # strings are effectively missing — mirror that here.
+        if not settings.bedrock_chat_model_id.strip():
             problems.append("chat_provider=bedrock requires BEDROCK_CHAT_MODEL_ID")
         min_tokens, max_tokens = BEDROCK_MAX_TOKENS_RANGE
         if not min_tokens <= settings.bedrock_chat_max_tokens <= max_tokens:
@@ -119,7 +121,10 @@ def validate_startup_settings(settings: Settings) -> None:
             )
 
     if settings.chat_provider == "agentcore":
-        if not settings.agentcore_runtime_url and not settings.agentcore_runtime_arn:
+        if (
+            not settings.agentcore_runtime_url.strip()
+            and not settings.agentcore_runtime_arn.strip()
+        ):
             problems.append(
                 "chat_provider=agentcore requires AGENTCORE_RUNTIME_URL or AGENTCORE_RUNTIME_ARN"
             )

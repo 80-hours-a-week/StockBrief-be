@@ -97,3 +97,23 @@ def test_startup_bounds_stay_in_sync_with_provider_constants() -> None:
         runtime_provider.MIN_AGENTCORE_TIMEOUT_SECONDS,
         runtime_provider.MAX_AGENTCORE_TIMEOUT_SECONDS,
     )
+
+
+def test_agentcore_whitespace_runtime_target_fails_at_boot() -> None:
+    # Providers strip runtime targets before checking, so whitespace-only
+    # values are effectively missing and must fail boot validation too.
+    settings = Settings(
+        chat_provider="agentcore",
+        agentcore_runtime_url="   ",
+        agentcore_runtime_arn="   ",
+    )
+
+    with pytest.raises(ValueError, match="AGENTCORE_RUNTIME_URL or AGENTCORE_RUNTIME_ARN"):
+        validate_startup_settings(settings)
+
+
+def test_bedrock_whitespace_model_id_fails_at_boot() -> None:
+    settings = Settings(chat_provider="bedrock", bedrock_chat_model_id="   ")
+
+    with pytest.raises(ValueError, match="BEDROCK_CHAT_MODEL_ID"):
+        validate_startup_settings(settings)
